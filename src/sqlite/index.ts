@@ -140,7 +140,11 @@ export class SQLiteEventManager<TSchema extends Record<string, unknown> = Record
     private readonly _config: EventManagerConfig;
     private readonly _database: BaseSQLiteDatabase<any, any, TSchema>;
 
-    constructor(database: BaseSQLiteDatabase<any, any, TSchema>, config?: PartialEventManagerConfig) {
+    constructor(
+        database: BaseSQLiteDatabase<any, any, TSchema>,
+        config?: PartialEventManagerConfig
+    )
+    {
         super();
         this._database = database;
         this._config = deepMerge(DefaultEventManagerConfig, config ?? {});
@@ -263,7 +267,7 @@ export class SQLiteEventManager<TSchema extends Record<string, unknown> = Record
                 }
 
                 // @ts-ignore
-                data[key] = deepMerge(old_row[key], data[key])
+                data[key] = deepMerge(old_row[key], data[key], this._config.array_strategy);
             }
         }
 

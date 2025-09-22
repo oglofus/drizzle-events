@@ -59,7 +59,7 @@ export const isPlainObject = (value: unknown): value is Record<string, unknown> 
 export function deepMerge<T, U>(
     a: T,
     b: U,
-    array_strategy: ArrayStrategy = "replace",
+    array_strategy: ArrayStrategy = "union",
 ): MergeDeep<T, U> {
     if (!isPlainObject(a)) {
         return b as MergeDeep<T, U>;
