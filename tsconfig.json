@@ -11,6 +11,8 @@
     "forceConsistentCasingInFileNames": true
   },
   "include": [
-    "src/index.ts"
+    "src/index.ts",
+    "src/sqlite/index.ts",
+    "src/base/index.ts"
   ]
 }
