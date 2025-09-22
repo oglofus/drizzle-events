@@ -135,18 +135,18 @@ type SQLiteEventClass<T extends SQLiteTableWithColumns<any>, E extends SQLiteEve
                                                                                                   ? SQLitePreDeleteEvent<T>
                                                                                                   : SQLitePostDeleteEvent<T>;
 
-export class SQLiteEventManager<TSchema extends Record<string, unknown> = Record<string, never>, DSchema extends BaseSQLiteDatabase<any, any, TSchema> = BaseSQLiteDatabase<any, any, TSchema>>
+export class SQLiteEventManager<TSchema extends Record<string, unknown> = Record<string, never>>
     extends RawEventManager {
     private readonly _config: EventManagerConfig;
-    private readonly _database: DSchema;
+    private readonly _database: BaseSQLiteDatabase<any, any, TSchema>;
 
-    constructor(database: DSchema, config?: PartialEventManagerConfig) {
+    constructor(database: BaseSQLiteDatabase<any, any, TSchema>, config?: PartialEventManagerConfig) {
         super();
         this._database = database;
         this._config = deepMerge(DefaultEventManagerConfig, config ?? {});
     }
 
-    get database(): DSchema {
+    get database(): BaseSQLiteDatabase<any, any, TSchema> {
         return this._database;
     }
 
@@ -381,8 +381,8 @@ export class SQLiteEventManager<TSchema extends Record<string, unknown> = Record
         };
     }
 
-    public put<TKey extends keyof DSchema["_"]["schema"], TTable extends DSchema["_"]["schema"][TKey] & SQLiteTableWithColumns<any>, E extends SQLiteEventType, C extends SQLiteEventClass<TTable, E>>(
-        table: TTable,
+    public put<T extends SQLiteTableWithColumns<any>, E extends SQLiteEventType, C extends SQLiteEventClass<T, E>>(
+        table: T,
         type: E,
         handler: (event: C) => Promise<void> | void,
         priority: EventPriority = EventPriority.NORMAL
