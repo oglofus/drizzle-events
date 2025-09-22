@@ -205,8 +205,8 @@ test('update: merges objects when enabled and respects post-update rollback', as
   // pre handler saw the original row
   assert.deepEqual(preSeenOld, { id: 1, name: 'Alice', meta: { a: 1, arr: [1] } });
 
-  // Because SQLiteEventManager uses deepMerge() without passing config.array_strategy,
-  // arrays use the default 'replace' strategy. So arr should equal [1,2], not union.
+  // SQLiteEventManager uses deepMerge() with the configured array_strategy (union by default).
+  // With default union strategy, arrays should deduplicate: [1, 2].
   assert.deepEqual(res.data, { id: 1, name: 'Alice2', meta: { a: 1, b: 2, arr: [1, 2] } });
   assert.deepEqual(postSeenOld, { id: 1, name: 'Alice', meta: { a: 1, arr: [1] } });
   assert.deepEqual(postSeenRow, res.data);
@@ -269,4 +269,34 @@ test('handler priority affects execution order per event type', async () => {
 
   // HIGHEST(1) < HIGH(2) < NORMAL(3) < LOW(4). So HIGH before LOW.
   assert.deepEqual(order, ['high', 'low', 'post-high', 'post-low']);
+});
+
+test('update: array_strategy replace replaces arrays', async () => {
+  const db = new MockSQLiteDatabase();
+  const manager = createManager(db, { merge_objects: true, array_strategy: 'replace' });
+
+  await db.insert(users).values({ id: 1, name: 'Alice', meta: { a: 1, arr: [1] } }).execute();
+
+  manager.put(users, 'pre-update', (event) => {
+    event.data.meta = { b: 2, arr: [1, 2] };
+  });
+
+  const res = await manager.update(users, 'id', 1, {});
+  assert.equal(res.type, 'success');
+  assert.deepEqual(res.data.meta, { a: 1, b: 2, arr: [1, 2] });
+});
+
+test('update: array_strategy concat concatenates arrays preserving duplicates', async () => {
+  const db = new MockSQLiteDatabase();
+  const manager = createManager(db, { merge_objects: true, array_strategy: 'concat' });
+
+  await db.insert(users).values({ id: 1, name: 'Alice', meta: { a: 1, arr: [1] } }).execute();
+
+  manager.put(users, 'pre-update', (event) => {
+    event.data.meta = { b: 2, arr: [1, 2] };
+  });
+
+  const res = await manager.update(users, 'id', 1, {});
+  assert.equal(res.type, 'success');
+  assert.deepEqual(res.data.meta, { a: 1, b: 2, arr: [1, 1, 2] });
 });
