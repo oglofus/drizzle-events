@@ -1,0 +1,73 @@
+{
+  "name": "@oglofus/drizzle-events",
+  "version": "0.0.1",
+  "description": "A lightweight, strongly-typed event management library for Drizzle ORM.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./sqlite": {
+      "types": "./dist/sqlite/index.d.ts",
+      "import": "./dist/sqlite/index.js",
+      "default": "./dist/sqlite/index.js"
+    },
+    "./base": {
+      "types": "./dist/base/index.d.ts",
+      "import": "./dist/base/index.js",
+      "default": "./dist/base/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "test": "npm run build && node --test",
+    "prepublishOnly": "npm run build"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/oglofus/drizzle-events.git"
+  },
+  "bugs": {
+    "url": "https://github.com/oglofus/drizzle-events/issues"
+  },
+  "homepage": "https://github.com/oglofus/drizzle-events#readme",
+  "keywords": [
+    "drizzle",
+    "drizzle-orm",
+    "plugin",
+    "event-manager",
+    "events",
+    "event-emitter",
+    "event-handling",
+    "typescript",
+    "javascript",
+    "type-safe",
+    "strongly-typed",
+    "lightweight",
+    "event-driven",
+    "pub-sub",
+    "observer-pattern"
+  ],
+  "author": "oglofus <> (https://oglofus.com/)",
+  "license": "ISC",
+  "private": false,
+  "devDependencies": {
+    "typescript": "^5.9.2"
+  },
+  "dependencies": {
+    "@oglofus/event-manager": "^0.0.3",
+    "drizzle-orm": "^0.44.5"
+  }
+}
