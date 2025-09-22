@@ -267,7 +267,6 @@ test('handler priority affects execution order per event type', async () => {
   const res = await manager.insert(users, 'id', { id: 1, name: 'Alice' });
   assert.equal(res.type, 'success');
 
-  // According to @oglofus/event-manager, lower numeric value means higher priority and executes first.
   // HIGHEST(1) < HIGH(2) < NORMAL(3) < LOW(4). So HIGH before LOW.
   assert.deepEqual(order, ['high', 'low', 'post-high', 'post-low']);
 });
