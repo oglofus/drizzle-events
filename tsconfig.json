@@ -12,7 +12,8 @@
   },
   "include": [
     "src/index.ts",
+    "src/base/index.ts",
     "src/sqlite/index.ts",
-    "src/base/index.ts"
+    "src/d1/index.ts"
   ]
 }
