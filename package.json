@@ -1,6 +1,6 @@
 {
   "name": "@oglofus/drizzle-events",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "A lightweight, strongly-typed event management library for Drizzle ORM.",
   "type": "module",
   "main": "dist/index.js",
@@ -15,6 +15,11 @@
       "types": "./dist/sqlite/index.d.ts",
       "import": "./dist/sqlite/index.js",
       "default": "./dist/sqlite/index.js"
+    },
+    "./d1": {
+      "types": "./dist/d1/index.d.ts",
+      "import": "./dist/d1/index.js",
+      "default": "./dist/d1/index.js"
     },
     "./base": {
       "types": "./dist/base/index.d.ts",
@@ -64,6 +69,7 @@
   "license": "ISC",
   "private": false,
   "devDependencies": {
+    "prettier": "^3.6.2",
     "typescript": "^5.9.2"
   },
   "dependencies": {
