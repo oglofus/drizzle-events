@@ -6,9 +6,9 @@ import {
 	SQLitePostInsertEvent,
 	SQLitePreInsertEvent
 } from '../sqlite/index.js';
-import { AnyD1Database } from 'drizzle-orm/d1';
+import { DrizzleD1Database } from 'drizzle-orm/d1';
 
-export class D1EventManager<D extends AnyD1Database> extends SQLiteEventManager<D> {
+export class D1EventManager<D extends DrizzleD1Database<any>> extends SQLiteEventManager<D> {
 	constructor(database: D, config?: PartialEventManagerConfig) {
 		super(database, config);
 	}
