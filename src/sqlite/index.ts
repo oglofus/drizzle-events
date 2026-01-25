@@ -1,13 +1,15 @@
+import { CancellableEvent, EventPriority, RawEventManager } from '@oglofus/event-manager';
 import {
+	and,
 	eq,
 	getTableColumns,
 	getTableUniqueName,
 	InferInsertModel,
 	InferSelectModel
 } from 'drizzle-orm';
-import { CancellableEvent, EventPriority, RawEventManager } from '@oglofus/event-manager';
 import {
 	BaseSQLiteDatabase,
+	getTableConfig,
 	SQLiteTableWithColumns,
 	SQLiteUpdateSetSource
 } from 'drizzle-orm/sqlite-core';
@@ -160,9 +162,34 @@ export class SQLiteEventManager<
 
 	public async insert<T extends SQLiteTableWithColumns<any>>(
 		table: T,
+		data: InferInsertModel<T>
+	): Promise<Response<InferSelectModel<T>>>;
+
+	public async insert<T extends SQLiteTableWithColumns<any>>(
+		table: T,
 		primary_field: keyof InferSelectModel<T>,
 		data: InferInsertModel<T>
+	): Promise<Response<InferSelectModel<T>>>;
+
+	public async insert<T extends SQLiteTableWithColumns<any>>(
+		table: T,
+		primary_field_or_data: keyof InferSelectModel<T> | InferInsertModel<T>,
+		maybe_data?: InferInsertModel<T>
 	): Promise<Response<InferSelectModel<T>>> {
+		const primary_field =
+			maybe_data === undefined ? undefined : (primary_field_or_data as keyof InferSelectModel<T>);
+		let data =
+			maybe_data === undefined ? (primary_field_or_data as InferInsertModel<T>) : maybe_data;
+
+		const primary_info = this._resolvePrimaryKeys(table, primary_field);
+
+		if ('error' in primary_info && this._config.rollback_on_cancel) {
+			return {
+				type: 'error',
+				message: `${primary_info.error} Pass a primary_field or disable rollback_on_cancel.`
+			};
+		}
+
 		const pre_response = await this.run(table, 'pre-insert', new SQLitePreInsertEvent<T>(data));
 
 		if (pre_response.event.isCancelled()) {
@@ -199,10 +226,10 @@ export class SQLiteEventManager<
 		const post_response = await this.run(table, 'post-insert', new SQLitePostInsertEvent<T>(row));
 
 		if (post_response.event.isCancelled()) {
-			if (this._config.rollback_on_cancel) {
+			if (this._config.rollback_on_cancel && 'keys' in primary_info) {
 				await this._database
 					.delete(table)
-					.where(eq(table[primary_field], row[primary_field]))
+					.where(this._buildWhereFromKeys(table, primary_info.keys, row))
 					.execute();
 			}
 
@@ -220,18 +247,57 @@ export class SQLiteEventManager<
 
 	public async update<T extends SQLiteTableWithColumns<any>>(
 		table: T,
-		primary_field: keyof InferSelectModel<T>,
-		primary_value: typeof primary_field extends keyof InferSelectModel<T>
-			? InferSelectModel<T>[keyof InferSelectModel<T>]
-			: never,
+		primary_value: InferSelectModel<T>[keyof InferSelectModel<T>] | Partial<InferSelectModel<T>>,
 		data: SQLiteUpdateSetSource<T>
+	): Promise<Response<InferSelectModel<T>>>;
+
+	public async update<T extends SQLiteTableWithColumns<any>>(
+		table: T,
+		primary_field: keyof InferSelectModel<T>,
+		primary_value: InferSelectModel<T>[keyof InferSelectModel<T>],
+		data: SQLiteUpdateSetSource<T>
+	): Promise<Response<InferSelectModel<T>>>;
+
+	public async update<T extends SQLiteTableWithColumns<any>>(
+		table: T,
+		primary_field_or_value:
+			| keyof InferSelectModel<T>
+			| InferSelectModel<T>[keyof InferSelectModel<T>]
+			| Partial<InferSelectModel<T>>,
+		primary_value_or_data:
+			| InferSelectModel<T>[keyof InferSelectModel<T>]
+			| SQLiteUpdateSetSource<T>,
+		maybe_data?: SQLiteUpdateSetSource<T>
 	): Promise<Response<InferSelectModel<T>>> {
+		const primary_field =
+			maybe_data === undefined ? undefined : (primary_field_or_value as keyof InferSelectModel<T>);
+		const primary_value = maybe_data === undefined ? primary_field_or_value : primary_value_or_data;
+		let data =
+			maybe_data === undefined ? (primary_value_or_data as SQLiteUpdateSetSource<T>) : maybe_data;
+
+		const primary_info = this._resolvePrimaryKeys(table, primary_field);
+		if ('error' in primary_info) {
+			return {
+				type: 'error',
+				message: `${primary_info.error} Pass a primary_field explicitly.`
+			};
+		}
+
+		const where_result = this._buildWhereFromPrimaryValue(table, primary_info.keys, primary_value);
+
+		if ('error' in where_result) {
+			return {
+				type: 'error',
+				message: where_result.error
+			};
+		}
+
 		const old_row = await this._database
 			.select({
 				...getTableColumns(table)
 			})
 			.from(table)
-			.where(eq(table[primary_field], primary_value))
+			.where(where_result.where)
 			.get();
 
 		if (!old_row) {
@@ -273,7 +339,7 @@ export class SQLiteEventManager<
 			results = (await this._database
 				.update(table)
 				.set(data)
-				.where(eq(table[primary_field], primary_value))
+				.where(where_result.where)
 				.returning()) as InferSelectModel<T>[];
 		} catch (error) {
 			return {
@@ -302,7 +368,7 @@ export class SQLiteEventManager<
 				await this._database
 					.update(table)
 					.set(old_row)
-					.where(eq(table[primary_field], primary_value))
+					.where(this._buildWhereFromKeys(table, primary_info.keys, old_row))
 					.execute();
 			}
 
@@ -320,17 +386,53 @@ export class SQLiteEventManager<
 
 	public async delete<T extends SQLiteTableWithColumns<any>>(
 		table: T,
+		primary_value: InferSelectModel<T>[keyof InferSelectModel<T>] | Partial<InferSelectModel<T>>
+	): Promise<Response<InferSelectModel<T>>>;
+
+	public async delete<T extends SQLiteTableWithColumns<any>>(
+		table: T,
 		primary_field: keyof InferSelectModel<T>,
-		primary_value: typeof primary_field extends keyof InferSelectModel<T>
-			? InferSelectModel<T>[keyof InferSelectModel<T>]
-			: never
+		primary_value: InferSelectModel<T>[keyof InferSelectModel<T>]
+	): Promise<Response<InferSelectModel<T>>>;
+
+	public async delete<T extends SQLiteTableWithColumns<any>>(
+		table: T,
+		primary_field_or_value:
+			| keyof InferSelectModel<T>
+			| InferSelectModel<T>[keyof InferSelectModel<T>]
+			| Partial<InferSelectModel<T>>,
+		maybe_primary_value?: InferSelectModel<T>[keyof InferSelectModel<T>]
 	): Promise<Response<InferSelectModel<T>>> {
+		const primary_field =
+			maybe_primary_value === undefined
+				? undefined
+				: (primary_field_or_value as keyof InferSelectModel<T>);
+		const primary_value =
+			maybe_primary_value === undefined ? primary_field_or_value : maybe_primary_value;
+
+		const primary_info = this._resolvePrimaryKeys(table, primary_field);
+
+		if ('error' in primary_info) {
+			return {
+				type: 'error',
+				message: `${primary_info.error} Pass a primary_field explicitly.`
+			};
+		}
+
+		const where_result = this._buildWhereFromPrimaryValue(table, primary_info.keys, primary_value);
+		if ('error' in where_result) {
+			return {
+				type: 'error',
+				message: where_result.error
+			};
+		}
+
 		const row = await this._database
 			.select({
 				...getTableColumns(table)
 			})
 			.from(table)
-			.where(eq(table[primary_field], primary_value))
+			.where(where_result.where)
 			.get();
 
 		if (!row) {
@@ -350,7 +452,7 @@ export class SQLiteEventManager<
 		}
 
 		try {
-			await this._database.delete(table).where(eq(table[primary_field], primary_value));
+			await this._database.delete(table).where(where_result.where);
 		} catch (error) {
 			return {
 				type: 'error',
@@ -396,6 +498,90 @@ export class SQLiteEventManager<
 		C extends SQLiteEventClass<T, E>
 	>(table: T, type: E, event: C) {
 		return await this._emit(this.getEventKey(table, type), event);
+	}
+
+	protected _resolvePrimaryKeys<T extends SQLiteTableWithColumns<any>>(
+		table: T,
+		primary_field?: keyof InferSelectModel<T>
+	): { keys: (keyof InferSelectModel<T>)[] } | { error: string } {
+		if (primary_field) {
+			return { keys: [primary_field] };
+		}
+
+		const config = getTableConfig(table);
+		const primary_columns = config.primaryKeys.flatMap((pk) => pk.columns);
+
+		if (primary_columns.length === 0) {
+			return { error: 'No primary key is defined for this table.' };
+		}
+
+		const table_columns = getTableColumns(table);
+		const keys: (keyof InferSelectModel<T>)[] = [];
+
+		for (const primary_column of primary_columns) {
+			const entry = Object.entries(table_columns).find(([, column]) => column === primary_column);
+
+			if (!entry) {
+				continue;
+			}
+
+			const key = entry[0] as keyof InferSelectModel<T>;
+
+			if (!keys.includes(key)) {
+				keys.push(key);
+			}
+		}
+
+		if (keys.length === 0) {
+			return { error: 'Unable to resolve primary key columns for this table.' };
+		}
+
+		return { keys };
+	}
+
+	protected _buildWhereFromPrimaryValue<T extends SQLiteTableWithColumns<any>>(
+		table: T,
+		keys: (keyof InferSelectModel<T>)[],
+		primary_value: unknown
+	): { where: ReturnType<typeof eq> } | { error: string } {
+		if (keys.length === 1) {
+			const key = keys[0];
+			const value =
+				primary_value !== null &&
+				typeof primary_value === 'object' &&
+				key in (primary_value as Record<string, unknown>)
+					? (primary_value as Record<string, unknown>)[key]
+					: primary_value;
+
+			return { where: eq(table[key], value as any) };
+		}
+
+		if (primary_value === null || typeof primary_value !== 'object') {
+			return {
+				error: `Composite primary key requires an object with values for ${keys
+					.map((key) => `"${String(key)}"`)
+					.join(', ')}.`
+			};
+		}
+
+		for (const key of keys) {
+			if (!(key in (primary_value as Record<string, unknown>))) {
+				return { error: `Composite primary key requires a value for "${String(key)}".` };
+			}
+		}
+
+		return {
+			where: this._buildWhereFromKeys(table, keys, primary_value as Partial<InferSelectModel<T>>)
+		};
+	}
+
+	protected _buildWhereFromKeys<T extends SQLiteTableWithColumns<any>>(
+		table: T,
+		keys: (keyof InferSelectModel<T>)[],
+		values: Partial<InferSelectModel<T>>
+	) {
+		const clauses = keys.map((key) => eq(table[key], values[key] as any));
+		return clauses.length === 1 ? clauses[0] : and(...clauses);
 	}
 
 	private getEventKey(table: SQLiteTableWithColumns<any>, type: SQLiteEventType) {

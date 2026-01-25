@@ -1,4 +1,5 @@
-import { eq, InferInsertModel, InferSelectModel } from 'drizzle-orm';
+import { InferInsertModel, InferSelectModel } from 'drizzle-orm';
+import { DrizzleD1Database } from 'drizzle-orm/d1';
 import { SQLiteTableWithColumns } from 'drizzle-orm/sqlite-core';
 import { PartialEventManagerConfig, Response } from '../base/index.js';
 import {
@@ -6,7 +7,6 @@ import {
 	SQLitePostInsertEvent,
 	SQLitePreInsertEvent
 } from '../sqlite/index.js';
-import { DrizzleD1Database } from 'drizzle-orm/d1';
 
 export class D1EventManager<D extends DrizzleD1Database<any>> extends SQLiteEventManager<D> {
 	constructor(database: D, config?: PartialEventManagerConfig) {
@@ -15,9 +15,34 @@ export class D1EventManager<D extends DrizzleD1Database<any>> extends SQLiteEven
 
 	public async insertBatch<T extends SQLiteTableWithColumns<any>>(
 		table: T,
+		data: InferInsertModel<T>[]
+	): Promise<Response<InferSelectModel<T>[]>>;
+
+	public async insertBatch<T extends SQLiteTableWithColumns<any>>(
+		table: T,
 		primary_field: keyof InferSelectModel<T>,
 		data: InferInsertModel<T>[]
+	): Promise<Response<InferSelectModel<T>[]>>;
+
+	public async insertBatch<T extends SQLiteTableWithColumns<any>>(
+		table: T,
+		primary_field_or_data: keyof InferSelectModel<T> | InferInsertModel<T>[],
+		maybe_data?: InferInsertModel<T>[]
 	): Promise<Response<InferSelectModel<T>[]>> {
+		const primary_field =
+			maybe_data === undefined ? undefined : (primary_field_or_data as keyof InferSelectModel<T>);
+		let data =
+			maybe_data === undefined ? (primary_field_or_data as InferInsertModel<T>[]) : maybe_data;
+
+		const primary_info = this._resolvePrimaryKeys(table, primary_field);
+
+		if ('error' in primary_info && this._config.rollback_on_cancel) {
+			return {
+				type: 'error',
+				message: `${primary_info.error} Pass a primary_field or disable rollback_on_cancel.`
+			};
+		}
+
 		for (let i = 0; i < data.length; i++) {
 			const pre_response = await this.run(
 				table,
@@ -63,11 +88,13 @@ export class D1EventManager<D extends DrizzleD1Database<any>> extends SQLiteEven
 			);
 
 			if (post_response.event.isCancelled()) {
-				for (let j = 0; j < results.length; j++) {
-					await this._database
-						.delete(table)
-						.where(eq(table[primary_field], results[j][primary_field]))
-						.execute();
+				if (this._config.rollback_on_cancel && 'keys' in primary_info) {
+					for (let j = 0; j < results.length; j++) {
+						await this._database
+							.delete(table)
+							.where(this._buildWhereFromKeys(table, primary_info.keys, results[j]))
+							.execute();
+					}
 				}
 
 				return {
