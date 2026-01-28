@@ -1,6 +1,6 @@
 {
 	"name": "@oglofus/drizzle-events",
-	"version": "0.0.7",
+	"version": "0.0.8",
 	"description": "A lightweight, strongly-typed event management library for Drizzle ORM.",
 	"type": "module",
 	"main": "dist/index.js",
@@ -20,6 +20,11 @@
 			"types": "./dist/d1/index.d.ts",
 			"import": "./dist/d1/index.js",
 			"default": "./dist/d1/index.js"
+		},
+		"./pg": {
+			"types": "./dist/pg/index.d.ts",
+			"import": "./dist/pg/index.js",
+			"default": "./dist/pg/index.js"
 		},
 		"./base": {
 			"types": "./dist/base/index.d.ts",

@@ -148,6 +148,7 @@ export class SQLiteEventManager<
 
 	constructor(database: D, config?: PartialEventManagerConfig) {
 		super();
+
 		this._database = database;
 		this._config = deepMerge(DefaultEventManagerConfig, config ?? {});
 	}
@@ -178,6 +179,7 @@ export class SQLiteEventManager<
 	): Promise<Response<InferSelectModel<T>>> {
 		const primary_field =
 			maybe_data === undefined ? undefined : (primary_field_or_data as keyof InferSelectModel<T>);
+
 		let data =
 			maybe_data === undefined ? (primary_field_or_data as InferInsertModel<T>) : maybe_data;
 
@@ -200,6 +202,7 @@ export class SQLiteEventManager<
 		}
 
 		data = pre_response.event.data;
+
 		let results: InferSelectModel<T>[];
 
 		try {
@@ -272,10 +275,12 @@ export class SQLiteEventManager<
 		const primary_field =
 			maybe_data === undefined ? undefined : (primary_field_or_value as keyof InferSelectModel<T>);
 		const primary_value = maybe_data === undefined ? primary_field_or_value : primary_value_or_data;
+
 		let data =
 			maybe_data === undefined ? (primary_value_or_data as SQLiteUpdateSetSource<T>) : maybe_data;
 
 		const primary_info = this._resolvePrimaryKeys(table, primary_field);
+
 		if ('error' in primary_info) {
 			return {
 				type: 'error',
@@ -420,6 +425,7 @@ export class SQLiteEventManager<
 		}
 
 		const where_result = this._buildWhereFromPrimaryValue(table, primary_info.keys, primary_value);
+
 		if ('error' in where_result) {
 			return {
 				type: 'error',
