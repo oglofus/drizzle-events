@@ -1,6 +1,6 @@
 {
 	"name": "@oglofus/drizzle-events",
-	"version": "0.0.8",
+	"version": "0.0.9",
 	"description": "A lightweight, strongly-typed event management library for Drizzle ORM.",
 	"type": "module",
 	"main": "dist/index.js",
