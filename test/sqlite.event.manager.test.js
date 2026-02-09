@@ -1,9 +1,9 @@
-import test from 'node:test';
 import assert from 'node:assert/strict';
+import test from 'node:test';
 
-import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core';
-import { getTableUniqueName } from 'drizzle-orm';
 import { EventPriority } from '@oglofus/event-manager';
+import { getTableUniqueName } from 'drizzle-orm';
+import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core';
 
 import { SQLiteEventManager } from '../dist/sqlite/index.js';
 
@@ -145,6 +145,7 @@ test('insert: pre and post events run, data can be modified in pre-insert', asyn
 	const res = await manager.insert(users, 'id', { id: 1, name: 'Alice', meta: { a: 1 } });
 	assert.equal(res.type, 'success');
 	assert.equal(res.data.name, 'Bob');
+	assert.deepEqual(res.issues, []);
 	assert.deepEqual(calls, ['pre', 'post']);
 });
 
@@ -168,6 +169,40 @@ test('insert: pre-insert cancellation prevents insert', async () => {
 	// Ensure no row was inserted
 	const row = await db.select({}).from(users).where({}).get();
 	assert.equal(row, undefined);
+});
+
+test('insert: cancellation can return field issues', async () => {
+	const db = new MockSQLiteDatabase();
+	const manager = createManager(db);
+
+	manager.put(users, 'pre-insert', (event) => {
+		event.cancel(
+			event.issue.name('Name is required.'),
+			event.issue.meta('Meta is not valid for this operation.')
+		);
+	});
+
+	const res = await manager.insert(users, 'id', { id: 1, name: '' });
+	assert.equal(res.type, 'error');
+	assert.equal(res.message, 'Name is required.');
+	assert.deepEqual(res.issues, [
+		{ message: 'Name is required.', path: ['name'] },
+		{ message: 'Meta is not valid for this operation.', path: ['meta'] }
+	]);
+});
+
+test('insert: destructured cancel and issue work together', async () => {
+	const db = new MockSQLiteDatabase();
+	const manager = createManager(db);
+
+	manager.put(users, 'pre-insert', ({ cancel, issue }) => {
+		cancel(issue.name('Cannot insert this row.'));
+	});
+
+	const res = await manager.insert(users, 'id', { id: 1, name: 'Alice' });
+	assert.equal(res.type, 'error');
+	assert.equal(res.message, 'Cannot insert this row.');
+	assert.deepEqual(res.issues, [{ message: 'Cannot insert this row.', path: ['name'] }]);
 });
 
 test('insert: post-insert cancellation triggers rollback when enabled', async () => {

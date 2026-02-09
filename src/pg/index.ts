@@ -1,4 +1,4 @@
-import { CancellableEvent, EventPriority, RawEventManager } from '@oglofus/event-manager';
+import { EventPriority, RawEventManager } from '@oglofus/event-manager';
 import {
 	and,
 	eq,
@@ -17,23 +17,35 @@ import {
 import {
 	deepMerge,
 	DefaultEventManagerConfig,
+	errorResponse,
 	EventManagerConfig,
+	Issue,
+	IssueEvent,
 	PartialEventManagerConfig,
-	Response
+	Response,
+	successResponse
 } from '../base/index.js';
 
 class PgEventRollbackError extends Error {
-	constructor(message?: string) {
+	readonly issues: Issue[];
+
+	constructor(message?: string, issues: Issue[] = []) {
 		super(message);
 		this.name = 'PgEventRollbackError';
+		this.issues = issues;
 	}
 }
 
-export class PgPreInsertEvent<T extends PgTableWithColumns<any>> extends CancellableEvent {
+export class PgPreInsertEvent<T extends PgTableWithColumns<any>> extends IssueEvent<
+	InferSelectModel<T>
+> {
 	private readonly _data: InferInsertModel<T>;
 
-	constructor(data: InferInsertModel<T>) {
-		super();
+	constructor(
+		fields: readonly Extract<keyof InferSelectModel<T>, string>[],
+		data: InferInsertModel<T>
+	) {
+		super(fields);
 
 		this._data = data;
 	}
@@ -43,11 +55,16 @@ export class PgPreInsertEvent<T extends PgTableWithColumns<any>> extends Cancell
 	}
 }
 
-export class PgPostInsertEvent<T extends PgTableWithColumns<any>> extends CancellableEvent {
+export class PgPostInsertEvent<T extends PgTableWithColumns<any>> extends IssueEvent<
+	InferSelectModel<T>
+> {
 	private readonly _row: InferSelectModel<T>;
 
-	constructor(data: InferSelectModel<T>) {
-		super();
+	constructor(
+		fields: readonly Extract<keyof InferSelectModel<T>, string>[],
+		data: InferSelectModel<T>
+	) {
+		super(fields);
 
 		this._row = data;
 	}
@@ -57,12 +74,18 @@ export class PgPostInsertEvent<T extends PgTableWithColumns<any>> extends Cancel
 	}
 }
 
-export class PgPreUpdateEvent<T extends PgTableWithColumns<any>> extends CancellableEvent {
+export class PgPreUpdateEvent<T extends PgTableWithColumns<any>> extends IssueEvent<
+	InferSelectModel<T>
+> {
 	private readonly _data: PgUpdateSetSource<T>;
 	private readonly _row: InferSelectModel<T>;
 
-	constructor(data: PgUpdateSetSource<T>, row: InferSelectModel<T>) {
-		super();
+	constructor(
+		fields: readonly Extract<keyof InferSelectModel<T>, string>[],
+		data: PgUpdateSetSource<T>,
+		row: InferSelectModel<T>
+	) {
+		super(fields);
 
 		this._data = data;
 		this._row = row;
@@ -77,12 +100,18 @@ export class PgPreUpdateEvent<T extends PgTableWithColumns<any>> extends Cancell
 	}
 }
 
-export class PgPostUpdateEvent<T extends PgTableWithColumns<any>> extends CancellableEvent {
+export class PgPostUpdateEvent<T extends PgTableWithColumns<any>> extends IssueEvent<
+	InferSelectModel<T>
+> {
 	private readonly _row: InferSelectModel<T>;
 	private readonly _old_row: InferSelectModel<T>;
 
-	constructor(row: InferSelectModel<T>, old_row: InferSelectModel<T>) {
-		super();
+	constructor(
+		fields: readonly Extract<keyof InferSelectModel<T>, string>[],
+		row: InferSelectModel<T>,
+		old_row: InferSelectModel<T>
+	) {
+		super(fields);
 
 		this._row = row;
 		this._old_row = old_row;
@@ -97,11 +126,16 @@ export class PgPostUpdateEvent<T extends PgTableWithColumns<any>> extends Cancel
 	}
 }
 
-export class PgPreDeleteEvent<T extends PgTableWithColumns<any>> extends CancellableEvent {
+export class PgPreDeleteEvent<T extends PgTableWithColumns<any>> extends IssueEvent<
+	InferSelectModel<T>
+> {
 	private readonly _row: InferSelectModel<T>;
 
-	constructor(row: InferSelectModel<T>) {
-		super();
+	constructor(
+		fields: readonly Extract<keyof InferSelectModel<T>, string>[],
+		row: InferSelectModel<T>
+	) {
+		super(fields);
 
 		this._row = row;
 	}
@@ -111,11 +145,16 @@ export class PgPreDeleteEvent<T extends PgTableWithColumns<any>> extends Cancell
 	}
 }
 
-export class PgPostDeleteEvent<T extends PgTableWithColumns<any>> extends CancellableEvent {
+export class PgPostDeleteEvent<T extends PgTableWithColumns<any>> extends IssueEvent<
+	InferSelectModel<T>
+> {
 	private readonly _row: InferSelectModel<T>;
 
-	constructor(row: InferSelectModel<T>) {
-		super();
+	constructor(
+		fields: readonly Extract<keyof InferSelectModel<T>, string>[],
+		row: InferSelectModel<T>
+	) {
+		super(fields);
 
 		this._row = row;
 	}
@@ -186,19 +225,23 @@ export class PgEventManager<D extends PgDatabase<any, any, any>> extends RawEven
 		primary_field_or_data: keyof InferSelectModel<T> | InferInsertModel<T>,
 		maybe_data?: InferInsertModel<T>
 	): Promise<Response<InferSelectModel<T>>> {
+		const issue_fields = this._getIssueFields(table);
 		let data =
 			maybe_data === undefined ? (primary_field_or_data as InferInsertModel<T>) : maybe_data;
 
 		const runInsert = async (
 			database: PgDatabase<any, any, any>
 		): Promise<Response<InferSelectModel<T>>> => {
-			const pre_response = await this.run(table, 'pre-insert', new PgPreInsertEvent<T>(data));
+			const issues = [];
+			const pre_response = await this.run(
+				table,
+				'pre-insert',
+				new PgPreInsertEvent<T>(issue_fields, data)
+			);
+			issues.push(...pre_response.event.issues);
 
 			if (pre_response.event.isCancelled()) {
-				return {
-					type: 'error',
-					message: pre_response.event.getCancelReason()
-				};
+				return errorResponse(pre_response.event.getCancelReason(), [...issues]);
 			}
 
 			data = pre_response.event.data;
@@ -207,38 +250,31 @@ export class PgEventManager<D extends PgDatabase<any, any, any>> extends RawEven
 			try {
 				results = (await database.insert(table).values(data).returning()) as InferSelectModel<T>[];
 			} catch (error) {
-				return {
-					type: 'error',
-					message: 'An error occurred while inserting the data.'
-				};
+				return errorResponse('An error occurred while inserting the data.', [...issues]);
 			}
 
 			if (results.length === 0) {
-				return {
-					type: 'error',
-					message: 'An error occurred while inserting the data.'
-				};
+				return errorResponse('An error occurred while inserting the data.', [...issues]);
 			}
 
 			const row = results[0];
 
-			const post_response = await this.run(table, 'post-insert', new PgPostInsertEvent<T>(row));
+			const post_response = await this.run(
+				table,
+				'post-insert',
+				new PgPostInsertEvent<T>(issue_fields, row)
+			);
+			issues.push(...post_response.event.issues);
 
 			if (post_response.event.isCancelled()) {
 				if (this._config.rollback_on_cancel) {
-					throw new PgEventRollbackError(post_response.event.getCancelReason());
+					throw new PgEventRollbackError(post_response.event.getCancelReason(), [...issues]);
 				}
 
-				return {
-					type: 'error',
-					message: post_response.event.getCancelReason()
-				};
+				return errorResponse(post_response.event.getCancelReason(), [...issues]);
 			}
 
-			return {
-				type: 'success',
-				data: row
-			};
+			return successResponse(row, [...issues]);
 		};
 
 		if (this._config.rollback_on_cancel) {
@@ -246,16 +282,10 @@ export class PgEventManager<D extends PgDatabase<any, any, any>> extends RawEven
 				return await this._database.transaction(async (tx) => runInsert(tx));
 			} catch (error) {
 				if (error instanceof PgEventRollbackError) {
-					return {
-						type: 'error',
-						message: error.message
-					};
+					return errorResponse(error.message, [...error.issues]);
 				}
 
-				return {
-					type: 'error',
-					message: 'An error occurred while inserting the data.'
-				};
+				return errorResponse('An error occurred while inserting the data.');
 			}
 		}
 
@@ -278,6 +308,7 @@ export class PgEventManager<D extends PgDatabase<any, any, any>> extends RawEven
 		primary_field_or_data: keyof InferSelectModel<T> | InferInsertModel<T>[],
 		maybe_data?: InferInsertModel<T>[]
 	): Promise<Response<InferSelectModel<T>[]>> {
+		const issue_fields = this._getIssueFields(table);
 		let data =
 			maybe_data === undefined ? (primary_field_or_data as InferInsertModel<T>[]) : maybe_data;
 
@@ -285,19 +316,22 @@ export class PgEventManager<D extends PgDatabase<any, any, any>> extends RawEven
 			database: PgDatabase<any, any, any>,
 			rollbackOnError: boolean
 		): Promise<Response<InferSelectModel<T>[]>> => {
+			const issues = [];
 			for (let i = 0; i < data.length; i++) {
-				const pre_response = await this.run(table, 'pre-insert', new PgPreInsertEvent<T>(data[i]));
+				const pre_response = await this.run(
+					table,
+					'pre-insert',
+					new PgPreInsertEvent<T>(issue_fields, data[i])
+				);
+				issues.push(...pre_response.event.issues);
 
 				if (pre_response.event.isCancelled()) {
 					const message = pre_response.event.getCancelReason();
 					if (rollbackOnError) {
-						throw new PgEventRollbackError(message);
+						throw new PgEventRollbackError(message, [...issues]);
 					}
 
-					return {
-						type: 'error',
-						message
-					};
+					return errorResponse(message, [...issues]);
 				}
 
 				data[i] = pre_response.event.data;
@@ -310,51 +344,40 @@ export class PgEventManager<D extends PgDatabase<any, any, any>> extends RawEven
 			} catch (error) {
 				const message = 'An error occurred while inserting the data.';
 				if (rollbackOnError) {
-					throw new PgEventRollbackError(message);
+					throw new PgEventRollbackError(message, [...issues]);
 				}
 
-				return {
-					type: 'error',
-					message
-				};
+				return errorResponse(message, [...issues]);
 			}
 
 			if (results.length === 0) {
 				const message = 'An error occurred while inserting the data.';
 				if (rollbackOnError) {
-					throw new PgEventRollbackError(message);
+					throw new PgEventRollbackError(message, [...issues]);
 				}
 
-				return {
-					type: 'error',
-					message
-				};
+				return errorResponse(message, [...issues]);
 			}
 
 			for (let i = 0; i < results.length; i++) {
 				const post_response = await this.run(
 					table,
 					'post-insert',
-					new PgPostInsertEvent<T>(results[i])
+					new PgPostInsertEvent<T>(issue_fields, results[i])
 				);
+				issues.push(...post_response.event.issues);
 
 				if (post_response.event.isCancelled()) {
 					const message = post_response.event.getCancelReason();
 					if (rollbackOnError) {
-						throw new PgEventRollbackError(message);
+						throw new PgEventRollbackError(message, [...issues]);
 					}
 
-					return {
-						type: 'error',
-						message
-					};
+					return errorResponse(message, [...issues]);
 				}
 			}
 
-			return {
-				type: 'success',
-				data: results
-			};
+			return successResponse(results, [...issues]);
 		};
 
 		if (this._config.rollback_on_cancel) {
@@ -362,16 +385,10 @@ export class PgEventManager<D extends PgDatabase<any, any, any>> extends RawEven
 				return await this._database.transaction(async (tx) => runInsertBatch(tx, true));
 			} catch (error) {
 				if (error instanceof PgEventRollbackError) {
-					return {
-						type: 'error',
-						message: error.message
-					};
+					return errorResponse(error.message, [...error.issues]);
 				}
 
-				return {
-					type: 'error',
-					message: 'An error occurred while inserting the data.'
-				};
+				return errorResponse('An error occurred while inserting the data.');
 			}
 		}
 
@@ -400,6 +417,7 @@ export class PgEventManager<D extends PgDatabase<any, any, any>> extends RawEven
 		primary_value_or_data: InferSelectModel<T>[keyof InferSelectModel<T>] | PgUpdateSetSource<T>,
 		maybe_data?: PgUpdateSetSource<T>
 	): Promise<Response<InferSelectModel<T>>> {
+		const issue_fields = this._getIssueFields(table);
 		const primary_field =
 			maybe_data === undefined ? undefined : (primary_field_or_value as keyof InferSelectModel<T>);
 		const primary_value = maybe_data === undefined ? primary_field_or_value : primary_value_or_data;
@@ -410,24 +428,19 @@ export class PgEventManager<D extends PgDatabase<any, any, any>> extends RawEven
 		const primary_info = this._resolvePrimaryKeys(table, primary_field);
 
 		if ('error' in primary_info) {
-			return {
-				type: 'error',
-				message: `${primary_info.error} Pass a primary_field explicitly.`
-			};
+			return errorResponse(`${primary_info.error} Pass a primary_field explicitly.`);
 		}
 
 		const where_result = this._buildWhereFromPrimaryValue(table, primary_info.keys, primary_value);
 
 		if ('error' in where_result) {
-			return {
-				type: 'error',
-				message: where_result.error
-			};
+			return errorResponse(where_result.error);
 		}
 
 		const runUpdate = async (
 			database: PgDatabase<any, any, any>
 		): Promise<Response<InferSelectModel<T>>> => {
+			const issues = [];
 			const [old_row] = (await database
 				.select({
 					...getTableColumns(table)
@@ -436,23 +449,18 @@ export class PgEventManager<D extends PgDatabase<any, any, any>> extends RawEven
 				.where(where_result.where)) as InferSelectModel<T>[];
 
 			if (!old_row) {
-				return {
-					type: 'error',
-					message: 'The row does not exist.'
-				};
+				return errorResponse('The row does not exist.', [...issues]);
 			}
 
 			const pre_response = await this.run(
 				table,
 				'pre-update',
-				new PgPreUpdateEvent<T>(data, old_row)
+				new PgPreUpdateEvent<T>(issue_fields, data, old_row)
 			);
+			issues.push(...pre_response.event.issues);
 
 			if (pre_response.event.isCancelled()) {
-				return {
-					type: 'error',
-					message: pre_response.event.getCancelReason()
-				};
+				return errorResponse(pre_response.event.getCancelReason(), [...issues]);
 			}
 
 			data = pre_response.event.data;
@@ -477,17 +485,11 @@ export class PgEventManager<D extends PgDatabase<any, any, any>> extends RawEven
 					.where(where_result.where)
 					.returning()) as InferSelectModel<T>[];
 			} catch (error) {
-				return {
-					type: 'error',
-					message: 'An error occurred while updating the data.'
-				};
+				return errorResponse('An error occurred while updating the data.', [...issues]);
 			}
 
 			if (results.length === 0) {
-				return {
-					type: 'error',
-					message: 'An error occurred while updating the data.'
-				};
+				return errorResponse('An error occurred while updating the data.', [...issues]);
 			}
 
 			const row = results[0];
@@ -495,24 +497,19 @@ export class PgEventManager<D extends PgDatabase<any, any, any>> extends RawEven
 			const post_response = await this.run(
 				table,
 				'post-update',
-				new PgPostUpdateEvent<T>(row, old_row)
+				new PgPostUpdateEvent<T>(issue_fields, row, old_row)
 			);
+			issues.push(...post_response.event.issues);
 
 			if (post_response.event.isCancelled()) {
 				if (this._config.rollback_on_cancel) {
-					throw new PgEventRollbackError(post_response.event.getCancelReason());
+					throw new PgEventRollbackError(post_response.event.getCancelReason(), [...issues]);
 				}
 
-				return {
-					type: 'error',
-					message: post_response.event.getCancelReason()
-				};
+				return errorResponse(post_response.event.getCancelReason(), [...issues]);
 			}
 
-			return {
-				type: 'success',
-				data: row
-			};
+			return successResponse(row, [...issues]);
 		};
 
 		if (this._config.rollback_on_cancel) {
@@ -520,16 +517,10 @@ export class PgEventManager<D extends PgDatabase<any, any, any>> extends RawEven
 				return await this._database.transaction(async (tx) => runUpdate(tx));
 			} catch (error) {
 				if (error instanceof PgEventRollbackError) {
-					return {
-						type: 'error',
-						message: error.message
-					};
+					return errorResponse(error.message, [...error.issues]);
 				}
 
-				return {
-					type: 'error',
-					message: 'An error occurred while updating the data.'
-				};
+				return errorResponse('An error occurred while updating the data.');
 			}
 		}
 
@@ -568,6 +559,7 @@ export class PgEventManager<D extends PgDatabase<any, any, any>> extends RawEven
 			data: PgUpdateSetSource<T>;
 		}>
 	): Promise<Response<InferSelectModel<T>[]>> {
+		const issue_fields = this._getIssueFields(table);
 		const primary_field =
 			maybe_updates === undefined
 				? undefined
@@ -584,16 +576,14 @@ export class PgEventManager<D extends PgDatabase<any, any, any>> extends RawEven
 
 		const primary_info = this._resolvePrimaryKeys(table, primary_field);
 		if ('error' in primary_info) {
-			return {
-				type: 'error',
-				message: `${primary_info.error} Pass a primary_field explicitly.`
-			};
+			return errorResponse(`${primary_info.error} Pass a primary_field explicitly.`);
 		}
 
 		const runUpdateBatch = async (
 			database: PgDatabase<any, any, any>,
 			rollbackOnError: boolean
 		): Promise<Response<InferSelectModel<T>[]>> => {
+			const issues = [];
 			const rows: InferSelectModel<T>[] = [];
 
 			for (const update of updates) {
@@ -605,13 +595,10 @@ export class PgEventManager<D extends PgDatabase<any, any, any>> extends RawEven
 
 				if ('error' in where_result) {
 					if (rollbackOnError) {
-						throw new PgEventRollbackError(where_result.error);
+						throw new PgEventRollbackError(where_result.error, [...issues]);
 					}
 
-					return {
-						type: 'error',
-						message: where_result.error
-					};
+					return errorResponse(where_result.error, [...issues]);
 				}
 
 				const [old_row] = (await database
@@ -624,13 +611,10 @@ export class PgEventManager<D extends PgDatabase<any, any, any>> extends RawEven
 				if (!old_row) {
 					const message = 'The row does not exist.';
 					if (rollbackOnError) {
-						throw new PgEventRollbackError(message);
+						throw new PgEventRollbackError(message, [...issues]);
 					}
 
-					return {
-						type: 'error',
-						message
-					};
+					return errorResponse(message, [...issues]);
 				}
 
 				let data = update.data;
@@ -638,19 +622,17 @@ export class PgEventManager<D extends PgDatabase<any, any, any>> extends RawEven
 				const pre_response = await this.run(
 					table,
 					'pre-update',
-					new PgPreUpdateEvent<T>(data, old_row)
+					new PgPreUpdateEvent<T>(issue_fields, data, old_row)
 				);
+				issues.push(...pre_response.event.issues);
 
 				if (pre_response.event.isCancelled()) {
 					const message = pre_response.event.getCancelReason();
 					if (rollbackOnError) {
-						throw new PgEventRollbackError(message);
+						throw new PgEventRollbackError(message, [...issues]);
 					}
 
-					return {
-						type: 'error',
-						message
-					};
+					return errorResponse(message, [...issues]);
 				}
 
 				data = pre_response.event.data;
@@ -677,25 +659,19 @@ export class PgEventManager<D extends PgDatabase<any, any, any>> extends RawEven
 				} catch (error) {
 					const message = 'An error occurred while updating the data.';
 					if (rollbackOnError) {
-						throw new PgEventRollbackError(message);
+						throw new PgEventRollbackError(message, [...issues]);
 					}
 
-					return {
-						type: 'error',
-						message
-					};
+					return errorResponse(message, [...issues]);
 				}
 
 				if (results.length === 0) {
 					const message = 'An error occurred while updating the data.';
 					if (rollbackOnError) {
-						throw new PgEventRollbackError(message);
+						throw new PgEventRollbackError(message, [...issues]);
 					}
 
-					return {
-						type: 'error',
-						message
-					};
+					return errorResponse(message, [...issues]);
 				}
 
 				const row = results[0];
@@ -703,28 +679,23 @@ export class PgEventManager<D extends PgDatabase<any, any, any>> extends RawEven
 				const post_response = await this.run(
 					table,
 					'post-update',
-					new PgPostUpdateEvent<T>(row, old_row)
+					new PgPostUpdateEvent<T>(issue_fields, row, old_row)
 				);
+				issues.push(...post_response.event.issues);
 
 				if (post_response.event.isCancelled()) {
 					const message = post_response.event.getCancelReason();
 					if (rollbackOnError) {
-						throw new PgEventRollbackError(message);
+						throw new PgEventRollbackError(message, [...issues]);
 					}
 
-					return {
-						type: 'error',
-						message
-					};
+					return errorResponse(message, [...issues]);
 				}
 
 				rows.push(row);
 			}
 
-			return {
-				type: 'success',
-				data: rows
-			};
+			return successResponse(rows, [...issues]);
 		};
 
 		if (this._config.rollback_on_cancel) {
@@ -732,16 +703,10 @@ export class PgEventManager<D extends PgDatabase<any, any, any>> extends RawEven
 				return await this._database.transaction(async (tx) => runUpdateBatch(tx, true));
 			} catch (error) {
 				if (error instanceof PgEventRollbackError) {
-					return {
-						type: 'error',
-						message: error.message
-					};
+					return errorResponse(error.message, [...error.issues]);
 				}
 
-				return {
-					type: 'error',
-					message: 'An error occurred while updating the data.'
-				};
+				return errorResponse('An error occurred while updating the data.');
 			}
 		}
 
@@ -767,6 +732,7 @@ export class PgEventManager<D extends PgDatabase<any, any, any>> extends RawEven
 			| Partial<InferSelectModel<T>>,
 		maybe_primary_value?: InferSelectModel<T>[keyof InferSelectModel<T>]
 	): Promise<Response<InferSelectModel<T>>> {
+		const issue_fields = this._getIssueFields(table);
 		const primary_field =
 			maybe_primary_value === undefined
 				? undefined
@@ -776,24 +742,19 @@ export class PgEventManager<D extends PgDatabase<any, any, any>> extends RawEven
 		const primary_info = this._resolvePrimaryKeys(table, primary_field);
 
 		if ('error' in primary_info) {
-			return {
-				type: 'error',
-				message: `${primary_info.error} Pass a primary_field explicitly.`
-			};
+			return errorResponse(`${primary_info.error} Pass a primary_field explicitly.`);
 		}
 
 		const where_result = this._buildWhereFromPrimaryValue(table, primary_info.keys, primary_value);
 
 		if ('error' in where_result) {
-			return {
-				type: 'error',
-				message: where_result.error
-			};
+			return errorResponse(where_result.error);
 		}
 
 		const runDelete = async (
 			database: PgDatabase<any, any, any>
 		): Promise<Response<InferSelectModel<T>>> => {
+			const issues = [];
 			const [row] = (await database
 				.select({
 					...getTableColumns(table)
@@ -802,47 +763,42 @@ export class PgEventManager<D extends PgDatabase<any, any, any>> extends RawEven
 				.where(where_result.where)) as InferSelectModel<T>[];
 
 			if (!row) {
-				return {
-					type: 'error',
-					message: 'The row does not exist.'
-				};
+				return errorResponse('The row does not exist.', [...issues]);
 			}
 
-			const pre_response = await this.run(table, 'pre-delete', new PgPreDeleteEvent<T>(row));
+			const pre_response = await this.run(
+				table,
+				'pre-delete',
+				new PgPreDeleteEvent<T>(issue_fields, row)
+			);
+			issues.push(...pre_response.event.issues);
 
 			if (pre_response.event.isCancelled()) {
-				return {
-					type: 'error',
-					message: pre_response.event.getCancelReason()
-				};
+				return errorResponse(pre_response.event.getCancelReason(), [...issues]);
 			}
 
 			try {
 				await database.delete(table).where(where_result.where);
 			} catch (error) {
-				return {
-					type: 'error',
-					message: 'An error occurred while updating the data.'
-				};
+				return errorResponse('An error occurred while updating the data.', [...issues]);
 			}
 
-			const post_response = await this.run(table, 'post-delete', new PgPostDeleteEvent<T>(row));
+			const post_response = await this.run(
+				table,
+				'post-delete',
+				new PgPostDeleteEvent<T>(issue_fields, row)
+			);
+			issues.push(...post_response.event.issues);
 
 			if (post_response.event.isCancelled()) {
 				if (this._config.rollback_on_cancel) {
-					throw new PgEventRollbackError(post_response.event.getCancelReason());
+					throw new PgEventRollbackError(post_response.event.getCancelReason(), [...issues]);
 				}
 
-				return {
-					type: 'error',
-					message: post_response.event.getCancelReason()
-				};
+				return errorResponse(post_response.event.getCancelReason(), [...issues]);
 			}
 
-			return {
-				type: 'success',
-				data: row
-			};
+			return successResponse(row, [...issues]);
 		};
 
 		if (this._config.rollback_on_cancel) {
@@ -850,16 +806,10 @@ export class PgEventManager<D extends PgDatabase<any, any, any>> extends RawEven
 				return await this._database.transaction(async (tx) => runDelete(tx));
 			} catch (error) {
 				if (error instanceof PgEventRollbackError) {
-					return {
-						type: 'error',
-						message: error.message
-					};
+					return errorResponse(error.message, [...error.issues]);
 				}
 
-				return {
-					type: 'error',
-					message: 'An error occurred while updating the data.'
-				};
+				return errorResponse('An error occurred while updating the data.');
 			}
 		}
 
@@ -886,6 +836,7 @@ export class PgEventManager<D extends PgDatabase<any, any, any>> extends RawEven
 			| Array<InferSelectModel<T>[keyof InferSelectModel<T>] | Partial<InferSelectModel<T>>>,
 		maybe_primary_values?: Array<InferSelectModel<T>[keyof InferSelectModel<T>]>
 	): Promise<Response<InferSelectModel<T>[]>> {
+		const issue_fields = this._getIssueFields(table);
 		const primary_field =
 			maybe_primary_values === undefined
 				? undefined
@@ -900,16 +851,14 @@ export class PgEventManager<D extends PgDatabase<any, any, any>> extends RawEven
 		const primary_info = this._resolvePrimaryKeys(table, primary_field);
 
 		if ('error' in primary_info) {
-			return {
-				type: 'error',
-				message: `${primary_info.error} Pass a primary_field explicitly.`
-			};
+			return errorResponse(`${primary_info.error} Pass a primary_field explicitly.`);
 		}
 
 		const runDeleteBatch = async (
 			database: PgDatabase<any, any, any>,
 			rollbackOnError: boolean
 		): Promise<Response<InferSelectModel<T>[]>> => {
+			const issues = [];
 			const rows: InferSelectModel<T>[] = [];
 
 			for (const primary_value of primary_values) {
@@ -921,13 +870,10 @@ export class PgEventManager<D extends PgDatabase<any, any, any>> extends RawEven
 
 				if ('error' in where_result) {
 					if (rollbackOnError) {
-						throw new PgEventRollbackError(where_result.error);
+						throw new PgEventRollbackError(where_result.error, [...issues]);
 					}
 
-					return {
-						type: 'error',
-						message: where_result.error
-					};
+					return errorResponse(where_result.error, [...issues]);
 				}
 
 				const [row] = (await database
@@ -940,27 +886,26 @@ export class PgEventManager<D extends PgDatabase<any, any, any>> extends RawEven
 				if (!row) {
 					const message = 'The row does not exist.';
 					if (rollbackOnError) {
-						throw new PgEventRollbackError(message);
+						throw new PgEventRollbackError(message, [...issues]);
 					}
 
-					return {
-						type: 'error',
-						message
-					};
+					return errorResponse(message, [...issues]);
 				}
 
-				const pre_response = await this.run(table, 'pre-delete', new PgPreDeleteEvent<T>(row));
+				const pre_response = await this.run(
+					table,
+					'pre-delete',
+					new PgPreDeleteEvent<T>(issue_fields, row)
+				);
+				issues.push(...pre_response.event.issues);
 
 				if (pre_response.event.isCancelled()) {
 					const message = pre_response.event.getCancelReason();
 					if (rollbackOnError) {
-						throw new PgEventRollbackError(message);
+						throw new PgEventRollbackError(message, [...issues]);
 					}
 
-					return {
-						type: 'error',
-						message
-					};
+					return errorResponse(message, [...issues]);
 				}
 
 				try {
@@ -968,36 +913,32 @@ export class PgEventManager<D extends PgDatabase<any, any, any>> extends RawEven
 				} catch (error) {
 					const message = 'An error occurred while updating the data.';
 					if (rollbackOnError) {
-						throw new PgEventRollbackError(message);
+						throw new PgEventRollbackError(message, [...issues]);
 					}
 
-					return {
-						type: 'error',
-						message
-					};
+					return errorResponse(message, [...issues]);
 				}
 
-				const post_response = await this.run(table, 'post-delete', new PgPostDeleteEvent<T>(row));
+				const post_response = await this.run(
+					table,
+					'post-delete',
+					new PgPostDeleteEvent<T>(issue_fields, row)
+				);
+				issues.push(...post_response.event.issues);
 
 				if (post_response.event.isCancelled()) {
 					const message = post_response.event.getCancelReason();
 					if (rollbackOnError) {
-						throw new PgEventRollbackError(message);
+						throw new PgEventRollbackError(message, [...issues]);
 					}
 
-					return {
-						type: 'error',
-						message
-					};
+					return errorResponse(message, [...issues]);
 				}
 
 				rows.push(row);
 			}
 
-			return {
-				type: 'success',
-				data: rows
-			};
+			return successResponse(rows, [...issues]);
 		};
 
 		if (this._config.rollback_on_cancel) {
@@ -1005,16 +946,10 @@ export class PgEventManager<D extends PgDatabase<any, any, any>> extends RawEven
 				return await this._database.transaction(async (tx) => runDeleteBatch(tx, true));
 			} catch (error) {
 				if (error instanceof PgEventRollbackError) {
-					return {
-						type: 'error',
-						message: error.message
-					};
+					return errorResponse(error.message, [...error.issues]);
 				}
 
-				return {
-					type: 'error',
-					message: 'An error occurred while updating the data.'
-				};
+				return errorResponse('An error occurred while updating the data.');
 			}
 		}
 
@@ -1124,6 +1059,10 @@ export class PgEventManager<D extends PgDatabase<any, any, any>> extends RawEven
 	) {
 		const clauses = keys.map((key) => eq(table[key], values[key] as any));
 		return clauses.length === 1 ? clauses[0] : and(...clauses);
+	}
+
+	protected _getIssueFields<T extends PgTableWithColumns<any>>(table: T) {
+		return Object.keys(getTableColumns(table)) as Extract<keyof InferSelectModel<T>, string>[];
 	}
 
 	private getEventKey(table: PgTableWithColumns<any>, type: PgEventType) {

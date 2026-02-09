@@ -1,14 +1,17 @@
-import test from 'node:test';
 import assert from 'node:assert/strict';
+import test from 'node:test';
 
-import { deepMerge, isPlainObject, DefaultEventManagerConfig } from '../dist/base/index.js';
+import { deepMerge, DefaultEventManagerConfig, isPlainObject } from '../dist/base/index.js';
 
 test('isPlainObject identifies plain objects and excludes arrays/functions/null', () => {
 	assert.equal(isPlainObject({}), true);
 	assert.equal(isPlainObject({ a: 1 }), true);
 	assert.equal(isPlainObject([]), false);
 	assert.equal(isPlainObject(null), false);
-	assert.equal(isPlainObject(() => {}), false);
+	assert.equal(
+		isPlainObject(() => {}),
+		false
+	);
 	assert.equal(isPlainObject(new Date()), false);
 });
 
@@ -34,20 +37,12 @@ test('deepMerge merges nested objects and unions arrays by default', () => {
 });
 
 test('deepMerge array_strategy concat preserves duplicates', () => {
-	const res = deepMerge(
-		{ list: [1, 2] },
-		{ list: [2, 3] },
-		'concat'
-	);
+	const res = deepMerge({ list: [1, 2] }, { list: [2, 3] }, 'concat');
 	assert.deepEqual(res, { list: [1, 2, 2, 3] });
 });
 
 test('deepMerge array_strategy replace replaces arrays from right side', () => {
-	const res = deepMerge(
-		{ list: [1, 2] },
-		{ list: [2, 3] },
-		'replace'
-	);
+	const res = deepMerge({ list: [1, 2] }, { list: [2, 3] }, 'replace');
 	assert.deepEqual(res, { list: [2, 3] });
 });
 

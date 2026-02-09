@@ -1,4 +1,4 @@
-import { CancellableEvent, EventPriority, RawEventManager } from '@oglofus/event-manager';
+import { EventPriority, RawEventManager } from '@oglofus/event-manager';
 import {
 	and,
 	eq,
@@ -16,16 +16,24 @@ import {
 import {
 	deepMerge,
 	DefaultEventManagerConfig,
+	errorResponse,
 	EventManagerConfig,
+	IssueEvent,
 	PartialEventManagerConfig,
-	Response
+	Response,
+	successResponse
 } from '../base/index.js';
 
-export class SQLitePreInsertEvent<T extends SQLiteTableWithColumns<any>> extends CancellableEvent {
+export class SQLitePreInsertEvent<T extends SQLiteTableWithColumns<any>> extends IssueEvent<
+	InferSelectModel<T>
+> {
 	private readonly _data: InferInsertModel<T>;
 
-	constructor(data: InferInsertModel<T>) {
-		super();
+	constructor(
+		fields: readonly Extract<keyof InferSelectModel<T>, string>[],
+		data: InferInsertModel<T>
+	) {
+		super(fields);
 
 		this._data = data;
 	}
@@ -35,11 +43,16 @@ export class SQLitePreInsertEvent<T extends SQLiteTableWithColumns<any>> extends
 	}
 }
 
-export class SQLitePostInsertEvent<T extends SQLiteTableWithColumns<any>> extends CancellableEvent {
+export class SQLitePostInsertEvent<T extends SQLiteTableWithColumns<any>> extends IssueEvent<
+	InferSelectModel<T>
+> {
 	private readonly _row: InferSelectModel<T>;
 
-	constructor(data: InferSelectModel<T>) {
-		super();
+	constructor(
+		fields: readonly Extract<keyof InferSelectModel<T>, string>[],
+		data: InferSelectModel<T>
+	) {
+		super(fields);
 
 		this._row = data;
 	}
@@ -49,12 +62,18 @@ export class SQLitePostInsertEvent<T extends SQLiteTableWithColumns<any>> extend
 	}
 }
 
-export class SQLitePreUpdateEvent<T extends SQLiteTableWithColumns<any>> extends CancellableEvent {
+export class SQLitePreUpdateEvent<T extends SQLiteTableWithColumns<any>> extends IssueEvent<
+	InferSelectModel<T>
+> {
 	private readonly _data: SQLiteUpdateSetSource<T>;
 	private readonly _row: InferSelectModel<T>;
 
-	constructor(data: SQLiteUpdateSetSource<T>, row: InferSelectModel<T>) {
-		super();
+	constructor(
+		fields: readonly Extract<keyof InferSelectModel<T>, string>[],
+		data: SQLiteUpdateSetSource<T>,
+		row: InferSelectModel<T>
+	) {
+		super(fields);
 
 		this._data = data;
 		this._row = row;
@@ -69,12 +88,18 @@ export class SQLitePreUpdateEvent<T extends SQLiteTableWithColumns<any>> extends
 	}
 }
 
-export class SQLitePostUpdateEvent<T extends SQLiteTableWithColumns<any>> extends CancellableEvent {
+export class SQLitePostUpdateEvent<T extends SQLiteTableWithColumns<any>> extends IssueEvent<
+	InferSelectModel<T>
+> {
 	private readonly _row: InferSelectModel<T>;
 	private readonly _old_row: InferSelectModel<T>;
 
-	constructor(row: InferSelectModel<T>, old_row: InferSelectModel<T>) {
-		super();
+	constructor(
+		fields: readonly Extract<keyof InferSelectModel<T>, string>[],
+		row: InferSelectModel<T>,
+		old_row: InferSelectModel<T>
+	) {
+		super(fields);
 
 		this._row = row;
 		this._old_row = old_row;
@@ -89,11 +114,16 @@ export class SQLitePostUpdateEvent<T extends SQLiteTableWithColumns<any>> extend
 	}
 }
 
-export class SQLitePreDeleteEvent<T extends SQLiteTableWithColumns<any>> extends CancellableEvent {
+export class SQLitePreDeleteEvent<T extends SQLiteTableWithColumns<any>> extends IssueEvent<
+	InferSelectModel<T>
+> {
 	private readonly _row: InferSelectModel<T>;
 
-	constructor(row: InferSelectModel<T>) {
-		super();
+	constructor(
+		fields: readonly Extract<keyof InferSelectModel<T>, string>[],
+		row: InferSelectModel<T>
+	) {
+		super(fields);
 
 		this._row = row;
 	}
@@ -103,11 +133,16 @@ export class SQLitePreDeleteEvent<T extends SQLiteTableWithColumns<any>> extends
 	}
 }
 
-export class SQLitePostDeleteEvent<T extends SQLiteTableWithColumns<any>> extends CancellableEvent {
+export class SQLitePostDeleteEvent<T extends SQLiteTableWithColumns<any>> extends IssueEvent<
+	InferSelectModel<T>
+> {
 	private readonly _row: InferSelectModel<T>;
 
-	constructor(row: InferSelectModel<T>) {
-		super();
+	constructor(
+		fields: readonly Extract<keyof InferSelectModel<T>, string>[],
+		row: InferSelectModel<T>
+	) {
+		super(fields);
 
 		this._row = row;
 	}
@@ -177,6 +212,8 @@ export class SQLiteEventManager<
 		primary_field_or_data: keyof InferSelectModel<T> | InferInsertModel<T>,
 		maybe_data?: InferInsertModel<T>
 	): Promise<Response<InferSelectModel<T>>> {
+		const issue_fields = this._getIssueFields(table);
+		const issues = [];
 		const primary_field =
 			maybe_data === undefined ? undefined : (primary_field_or_data as keyof InferSelectModel<T>);
 
@@ -186,19 +223,20 @@ export class SQLiteEventManager<
 		const primary_info = this._resolvePrimaryKeys(table, primary_field);
 
 		if ('error' in primary_info && this._config.rollback_on_cancel) {
-			return {
-				type: 'error',
-				message: `${primary_info.error} Pass a primary_field or disable rollback_on_cancel.`
-			};
+			return errorResponse(
+				`${primary_info.error} Pass a primary_field or disable rollback_on_cancel.`
+			);
 		}
 
-		const pre_response = await this.run(table, 'pre-insert', new SQLitePreInsertEvent<T>(data));
+		const pre_response = await this.run(
+			table,
+			'pre-insert',
+			new SQLitePreInsertEvent<T>(issue_fields, data)
+		);
+		issues.push(...pre_response.event.issues);
 
 		if (pre_response.event.isCancelled()) {
-			return {
-				type: 'error',
-				message: pre_response.event.getCancelReason()
-			};
+			return errorResponse(pre_response.event.getCancelReason(), [...issues]);
 		}
 
 		data = pre_response.event.data;
@@ -211,22 +249,21 @@ export class SQLiteEventManager<
 				.values(data)
 				.returning()) as InferSelectModel<T>[];
 		} catch (error) {
-			return {
-				type: 'error',
-				message: 'An error occurred while inserting the data.'
-			};
+			return errorResponse('An error occurred while inserting the data.');
 		}
 
 		if (results.length === 0) {
-			return {
-				type: 'error',
-				message: 'An error occurred while inserting the data.'
-			};
+			return errorResponse('An error occurred while inserting the data.');
 		}
 
 		const row = results[0];
 
-		const post_response = await this.run(table, 'post-insert', new SQLitePostInsertEvent<T>(row));
+		const post_response = await this.run(
+			table,
+			'post-insert',
+			new SQLitePostInsertEvent<T>(issue_fields, row)
+		);
+		issues.push(...post_response.event.issues);
 
 		if (post_response.event.isCancelled()) {
 			if (this._config.rollback_on_cancel && 'keys' in primary_info) {
@@ -236,16 +273,10 @@ export class SQLiteEventManager<
 					.execute();
 			}
 
-			return {
-				type: 'error',
-				message: post_response.event.getCancelReason()
-			};
+			return errorResponse(post_response.event.getCancelReason(), [...issues]);
 		}
 
-		return {
-			type: 'success',
-			data: row
-		};
+		return successResponse(row, [...issues]);
 	}
 
 	public async update<T extends SQLiteTableWithColumns<any>>(
@@ -272,6 +303,8 @@ export class SQLiteEventManager<
 			| SQLiteUpdateSetSource<T>,
 		maybe_data?: SQLiteUpdateSetSource<T>
 	): Promise<Response<InferSelectModel<T>>> {
+		const issue_fields = this._getIssueFields(table);
+		const issues = [];
 		const primary_field =
 			maybe_data === undefined ? undefined : (primary_field_or_value as keyof InferSelectModel<T>);
 		const primary_value = maybe_data === undefined ? primary_field_or_value : primary_value_or_data;
@@ -282,19 +315,13 @@ export class SQLiteEventManager<
 		const primary_info = this._resolvePrimaryKeys(table, primary_field);
 
 		if ('error' in primary_info) {
-			return {
-				type: 'error',
-				message: `${primary_info.error} Pass a primary_field explicitly.`
-			};
+			return errorResponse(`${primary_info.error} Pass a primary_field explicitly.`);
 		}
 
 		const where_result = this._buildWhereFromPrimaryValue(table, primary_info.keys, primary_value);
 
 		if ('error' in where_result) {
-			return {
-				type: 'error',
-				message: where_result.error
-			};
+			return errorResponse(where_result.error);
 		}
 
 		const old_row = await this._database
@@ -306,23 +333,18 @@ export class SQLiteEventManager<
 			.get();
 
 		if (!old_row) {
-			return {
-				type: 'error',
-				message: 'The row does not exist.'
-			};
+			return errorResponse('The row does not exist.');
 		}
 
 		const pre_response = await this.run(
 			table,
 			'pre-update',
-			new SQLitePreUpdateEvent<T>(data, old_row)
+			new SQLitePreUpdateEvent<T>(issue_fields, data, old_row)
 		);
+		issues.push(...pre_response.event.issues);
 
 		if (pre_response.event.isCancelled()) {
-			return {
-				type: 'error',
-				message: pre_response.event.getCancelReason()
-			};
+			return errorResponse(pre_response.event.getCancelReason(), [...issues]);
 		}
 
 		data = pre_response.event.data;
@@ -347,17 +369,11 @@ export class SQLiteEventManager<
 				.where(where_result.where)
 				.returning()) as InferSelectModel<T>[];
 		} catch (error) {
-			return {
-				type: 'error',
-				message: 'An error occurred while updating the data.'
-			};
+			return errorResponse('An error occurred while updating the data.');
 		}
 
 		if (results.length === 0) {
-			return {
-				type: 'error',
-				message: 'An error occurred while updating the data.'
-			};
+			return errorResponse('An error occurred while updating the data.');
 		}
 
 		const row = results[0];
@@ -365,8 +381,9 @@ export class SQLiteEventManager<
 		const post_response = await this.run(
 			table,
 			'post-update',
-			new SQLitePostUpdateEvent<T>(row, old_row)
+			new SQLitePostUpdateEvent<T>(issue_fields, row, old_row)
 		);
+		issues.push(...post_response.event.issues);
 
 		if (post_response.event.isCancelled()) {
 			if (this._config.rollback_on_cancel) {
@@ -377,16 +394,10 @@ export class SQLiteEventManager<
 					.execute();
 			}
 
-			return {
-				type: 'error',
-				message: post_response.event.getCancelReason()
-			};
+			return errorResponse(post_response.event.getCancelReason(), [...issues]);
 		}
 
-		return {
-			type: 'success',
-			data: row
-		};
+		return successResponse(row, [...issues]);
 	}
 
 	public async delete<T extends SQLiteTableWithColumns<any>>(
@@ -408,6 +419,8 @@ export class SQLiteEventManager<
 			| Partial<InferSelectModel<T>>,
 		maybe_primary_value?: InferSelectModel<T>[keyof InferSelectModel<T>]
 	): Promise<Response<InferSelectModel<T>>> {
+		const issue_fields = this._getIssueFields(table);
+		const issues = [];
 		const primary_field =
 			maybe_primary_value === undefined
 				? undefined
@@ -418,19 +431,13 @@ export class SQLiteEventManager<
 		const primary_info = this._resolvePrimaryKeys(table, primary_field);
 
 		if ('error' in primary_info) {
-			return {
-				type: 'error',
-				message: `${primary_info.error} Pass a primary_field explicitly.`
-			};
+			return errorResponse(`${primary_info.error} Pass a primary_field explicitly.`);
 		}
 
 		const where_result = this._buildWhereFromPrimaryValue(table, primary_info.keys, primary_value);
 
 		if ('error' in where_result) {
-			return {
-				type: 'error',
-				message: where_result.error
-			};
+			return errorResponse(where_result.error);
 		}
 
 		const row = await this._database
@@ -442,47 +449,42 @@ export class SQLiteEventManager<
 			.get();
 
 		if (!row) {
-			return {
-				type: 'error',
-				message: 'The row does not exist.'
-			};
+			return errorResponse('The row does not exist.');
 		}
 
-		const pre_response = await this.run(table, 'pre-delete', new SQLitePreDeleteEvent<T>(row));
+		const pre_response = await this.run(
+			table,
+			'pre-delete',
+			new SQLitePreDeleteEvent<T>(issue_fields, row)
+		);
+		issues.push(...pre_response.event.issues);
 
 		if (pre_response.event.isCancelled()) {
-			return {
-				type: 'error',
-				message: pre_response.event.getCancelReason()
-			};
+			return errorResponse(pre_response.event.getCancelReason(), [...issues]);
 		}
 
 		try {
 			await this._database.delete(table).where(where_result.where);
 		} catch (error) {
-			return {
-				type: 'error',
-				message: 'An error occurred while updating the data.'
-			};
+			return errorResponse('An error occurred while updating the data.');
 		}
 
-		const post_response = await this.run(table, 'post-delete', new SQLitePostDeleteEvent<T>(row));
+		const post_response = await this.run(
+			table,
+			'post-delete',
+			new SQLitePostDeleteEvent<T>(issue_fields, row)
+		);
+		issues.push(...post_response.event.issues);
 
 		if (post_response.event.isCancelled()) {
 			if (this._config.rollback_on_cancel) {
 				await this._database.insert(table).values(row).execute();
 			}
 
-			return {
-				type: 'error',
-				message: post_response.event.getCancelReason()
-			};
+			return errorResponse(post_response.event.getCancelReason(), [...issues]);
 		}
 
-		return {
-			type: 'success',
-			data: row
-		};
+		return successResponse(row, [...issues]);
 	}
 
 	public put<
@@ -588,6 +590,10 @@ export class SQLiteEventManager<
 	) {
 		const clauses = keys.map((key) => eq(table[key], values[key] as any));
 		return clauses.length === 1 ? clauses[0] : and(...clauses);
+	}
+
+	protected _getIssueFields<T extends SQLiteTableWithColumns<any>>(table: T) {
+		return Object.keys(getTableColumns(table)) as Extract<keyof InferSelectModel<T>, string>[];
 	}
 
 	private getEventKey(table: SQLiteTableWithColumns<any>, type: SQLiteEventType) {

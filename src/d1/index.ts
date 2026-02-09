@@ -1,7 +1,12 @@
 import { InferInsertModel, InferSelectModel } from 'drizzle-orm';
 import { DrizzleD1Database } from 'drizzle-orm/d1';
 import { SQLiteTableWithColumns } from 'drizzle-orm/sqlite-core';
-import { PartialEventManagerConfig, Response } from '../base/index.js';
+import {
+	errorResponse,
+	PartialEventManagerConfig,
+	Response,
+	successResponse
+} from '../base/index.js';
 import {
 	SQLiteEventManager,
 	SQLitePostInsertEvent,
@@ -29,6 +34,8 @@ export class D1EventManager<D extends DrizzleD1Database<any>> extends SQLiteEven
 		primary_field_or_data: keyof InferSelectModel<T> | InferInsertModel<T>[],
 		maybe_data?: InferInsertModel<T>[]
 	): Promise<Response<InferSelectModel<T>[]>> {
+		const issue_fields = this._getIssueFields(table);
+		const issues = [];
 		const primary_field =
 			maybe_data === undefined ? undefined : (primary_field_or_data as keyof InferSelectModel<T>);
 		let data =
@@ -37,24 +44,21 @@ export class D1EventManager<D extends DrizzleD1Database<any>> extends SQLiteEven
 		const primary_info = this._resolvePrimaryKeys(table, primary_field);
 
 		if ('error' in primary_info && this._config.rollback_on_cancel) {
-			return {
-				type: 'error',
-				message: `${primary_info.error} Pass a primary_field or disable rollback_on_cancel.`
-			};
+			return errorResponse(
+				`${primary_info.error} Pass a primary_field or disable rollback_on_cancel.`
+			);
 		}
 
 		for (let i = 0; i < data.length; i++) {
 			const pre_response = await this.run(
 				table,
 				'pre-insert',
-				new SQLitePreInsertEvent<T>(data[i])
+				new SQLitePreInsertEvent<T>(issue_fields, data[i])
 			);
+			issues.push(...pre_response.event.issues);
 
 			if (pre_response.event.isCancelled()) {
-				return {
-					type: 'error',
-					message: pre_response.event.getCancelReason()
-				};
+				return errorResponse(pre_response.event.getCancelReason(), [...issues]);
 			}
 
 			data[i] = pre_response.event.data;
@@ -67,25 +71,20 @@ export class D1EventManager<D extends DrizzleD1Database<any>> extends SQLiteEven
 				data.map((r) => this._database.insert(table).values(r).returning()) as any
 			)) as any as InferSelectModel<T>[];
 		} catch (error) {
-			return {
-				type: 'error',
-				message: 'An error occurred while inserting the data.'
-			};
+			return errorResponse('An error occurred while inserting the data.');
 		}
 
 		if (results.length === 0) {
-			return {
-				type: 'error',
-				message: 'An error occurred while inserting the data.'
-			};
+			return errorResponse('An error occurred while inserting the data.');
 		}
 
 		for (let i = 0; i < results.length; i++) {
 			const post_response = await this.run(
 				table,
 				'post-insert',
-				new SQLitePostInsertEvent<T>(results[i])
+				new SQLitePostInsertEvent<T>(issue_fields, results[i])
 			);
+			issues.push(...post_response.event.issues);
 
 			if (post_response.event.isCancelled()) {
 				if (this._config.rollback_on_cancel && 'keys' in primary_info) {
@@ -97,16 +96,10 @@ export class D1EventManager<D extends DrizzleD1Database<any>> extends SQLiteEven
 					}
 				}
 
-				return {
-					type: 'error',
-					message: post_response.event.getCancelReason()
-				};
+				return errorResponse(post_response.event.getCancelReason(), [...issues]);
 			}
 		}
 
-		return {
-			type: 'success',
-			data: results
-		};
+		return successResponse(results, [...issues]);
 	}
 }

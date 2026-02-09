@@ -1,9 +1,9 @@
-import test from 'node:test';
 import assert from 'node:assert/strict';
+import test from 'node:test';
 
-import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core';
-import { getTableUniqueName } from 'drizzle-orm';
 import { EventPriority } from '@oglofus/event-manager';
+import { getTableUniqueName } from 'drizzle-orm';
+import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core';
 
 import { D1EventManager } from '../dist/d1/index.js';
 
@@ -190,6 +190,25 @@ test('D1 insertBatch: pre-insert cancellation prevents entire batch', async () =
 	// Ensure no rows were inserted
 	const row = await db.select({}).from(users).where({}).get();
 	assert.equal(row, undefined);
+});
+
+test('D1 insertBatch: cancellation includes field issues', async () => {
+	const db = new MockD1Database();
+	const manager = createManager(db);
+
+	manager.put(users, 'pre-insert', (event) => {
+		if (event.data.id === 2) {
+			event.cancel(event.issue.name('Name is required for row 2.'));
+		}
+	});
+
+	const res = await manager.insertBatch(users, 'id', [
+		{ id: 1, name: 'Alice' },
+		{ id: 2, name: '' }
+	]);
+	assert.equal(res.type, 'error');
+	assert.equal(res.message, 'Name is required for row 2.');
+	assert.deepEqual(res.issues, [{ message: 'Name is required for row 2.', path: ['name'] }]);
 });
 
 test('D1 insertBatch: post-insert cancellation triggers rollback of all inserted rows', async () => {

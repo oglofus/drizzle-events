@@ -1,9 +1,9 @@
-import test from 'node:test';
 import assert from 'node:assert/strict';
+import test from 'node:test';
 
-import { pgTable, integer, text, primaryKey } from 'drizzle-orm/pg-core';
-import { getTableUniqueName } from 'drizzle-orm';
 import { EventPriority } from '@oglofus/event-manager';
+import { getTableUniqueName } from 'drizzle-orm';
+import { integer, pgTable, primaryKey, text } from 'drizzle-orm/pg-core';
 
 import { PgEventManager } from '../dist/pg/index.js';
 
@@ -237,6 +237,20 @@ test('pg insert: post-insert cancellation rolls back when enabled', async () => 
 
 	const rows = await db.select({}).from(users).where();
 	assert.equal(rows.length, 0);
+});
+
+test('pg insert: cancellation issues survive rollback responses', async () => {
+	const db = new MockPgDatabase();
+	const manager = createManager(db, { rollback_on_cancel: true });
+
+	manager.put(users, 'post-insert', (event) => {
+		event.cancel(event.issue.name('Name has already been taken.'));
+	});
+
+	const res = await manager.insert(users, { id: 1, name: 'Alice' });
+	assert.equal(res.type, 'error');
+	assert.equal(res.message, 'Name has already been taken.');
+	assert.deepEqual(res.issues, [{ message: 'Name has already been taken.', path: ['name'] }]);
 });
 
 test('pg insert: post-insert cancellation does not rollback when disabled', async () => {
