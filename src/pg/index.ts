@@ -2,14 +2,16 @@ import { EventPriority, RawEventManager } from '@oglofus/event-manager';
 import {
 	and,
 	eq,
-	getTableColumns,
+	getColumns,
 	getTableUniqueName,
 	InferInsertModel,
-	InferSelectModel
+	InferSelectModel,
+	Table
 } from 'drizzle-orm';
 import {
 	getTableConfig,
-	PgDatabase,
+	PgAsyncDatabase,
+	PgTable,
 	PgTableWithColumns,
 	PgUpdateSetSource,
 	TableConfig
@@ -36,9 +38,7 @@ class PgEventRollbackError extends Error {
 	}
 }
 
-export class PgPreInsertEvent<T extends PgTableWithColumns<any>> extends IssueEvent<
-	InferSelectModel<T>
-> {
+export class PgPreInsertEvent<T extends Table> extends IssueEvent<InferSelectModel<T>> {
 	private readonly _data: InferInsertModel<T>;
 
 	constructor(
@@ -55,9 +55,7 @@ export class PgPreInsertEvent<T extends PgTableWithColumns<any>> extends IssueEv
 	}
 }
 
-export class PgPostInsertEvent<T extends PgTableWithColumns<any>> extends IssueEvent<
-	InferSelectModel<T>
-> {
+export class PgPostInsertEvent<T extends PgTable> extends IssueEvent<InferSelectModel<T>> {
 	private readonly _row: InferSelectModel<T>;
 
 	constructor(
@@ -74,9 +72,7 @@ export class PgPostInsertEvent<T extends PgTableWithColumns<any>> extends IssueE
 	}
 }
 
-export class PgPreUpdateEvent<T extends PgTableWithColumns<any>> extends IssueEvent<
-	InferSelectModel<T>
-> {
+export class PgPreUpdateEvent<T extends PgTable> extends IssueEvent<InferSelectModel<T>> {
 	private readonly _data: PgUpdateSetSource<T>;
 	private readonly _row: InferSelectModel<T>;
 
@@ -100,9 +96,7 @@ export class PgPreUpdateEvent<T extends PgTableWithColumns<any>> extends IssueEv
 	}
 }
 
-export class PgPostUpdateEvent<T extends PgTableWithColumns<any>> extends IssueEvent<
-	InferSelectModel<T>
-> {
+export class PgPostUpdateEvent<T extends PgTable> extends IssueEvent<InferSelectModel<T>> {
 	private readonly _row: InferSelectModel<T>;
 	private readonly _old_row: InferSelectModel<T>;
 
@@ -126,9 +120,7 @@ export class PgPostUpdateEvent<T extends PgTableWithColumns<any>> extends IssueE
 	}
 }
 
-export class PgPreDeleteEvent<T extends PgTableWithColumns<any>> extends IssueEvent<
-	InferSelectModel<T>
-> {
+export class PgPreDeleteEvent<T extends PgTable> extends IssueEvent<InferSelectModel<T>> {
 	private readonly _row: InferSelectModel<T>;
 
 	constructor(
@@ -145,9 +137,7 @@ export class PgPreDeleteEvent<T extends PgTableWithColumns<any>> extends IssueEv
 	}
 }
 
-export class PgPostDeleteEvent<T extends PgTableWithColumns<any>> extends IssueEvent<
-	InferSelectModel<T>
-> {
+export class PgPostDeleteEvent<T extends PgTable> extends IssueEvent<InferSelectModel<T>> {
 	private readonly _row: InferSelectModel<T>;
 
 	constructor(
@@ -172,10 +162,7 @@ export type PgEventType =
 	| 'pre-delete'
 	| 'post-delete';
 
-export type PgEventClass<
-	T extends PgTableWithColumns<any>,
-	E extends PgEventType
-> = E extends 'pre-insert'
+export type PgEventClass<T extends PgTable, E extends PgEventType> = E extends 'pre-insert'
 	? PgPreInsertEvent<T>
 	: E extends 'post-insert'
 		? PgPostInsertEvent<T>
@@ -187,7 +174,7 @@ export type PgEventClass<
 					? PgPreDeleteEvent<T>
 					: PgPostDeleteEvent<T>;
 
-export class PgEventManager<D extends PgDatabase<any, any, any>> extends RawEventManager {
+export class PgEventManager<D extends PgAsyncDatabase<any, any, any>> extends RawEventManager {
 	protected readonly _config: EventManagerConfig;
 	protected readonly _database: D;
 
@@ -209,18 +196,18 @@ export class PgEventManager<D extends PgDatabase<any, any, any>> extends RawEven
 		return this._config;
 	}
 
-	public async insert<T extends PgTableWithColumns<any>>(
+	public async insert<T extends PgTable>(
 		table: T,
 		data: InferInsertModel<T>
 	): Promise<Response<InferSelectModel<T>>>;
 
-	public async insert<T extends PgTableWithColumns<any>>(
+	public async insert<T extends PgTable>(
 		table: T,
 		primary_field: keyof InferSelectModel<T>,
 		data: InferInsertModel<T>
 	): Promise<Response<InferSelectModel<T>>>;
 
-	public async insert<T extends PgTableWithColumns<any>>(
+	public async insert<T extends PgTable>(
 		table: T,
 		primary_field_or_data: keyof InferSelectModel<T> | InferInsertModel<T>,
 		maybe_data?: InferInsertModel<T>
@@ -230,7 +217,7 @@ export class PgEventManager<D extends PgDatabase<any, any, any>> extends RawEven
 			maybe_data === undefined ? (primary_field_or_data as InferInsertModel<T>) : maybe_data;
 
 		const runInsert = async (
-			database: PgDatabase<any, any, any>
+			database: PgAsyncDatabase<any, any, any>
 		): Promise<Response<InferSelectModel<T>>> => {
 			const issues = [];
 			const pre_response = await this.run(
@@ -292,18 +279,18 @@ export class PgEventManager<D extends PgDatabase<any, any, any>> extends RawEven
 		return await runInsert(this._database);
 	}
 
-	public async insert_batch<T extends PgTableWithColumns<any>>(
+	public async insert_batch<T extends PgTable>(
 		table: T,
 		data: InferInsertModel<T>[]
 	): Promise<Response<InferSelectModel<T>[]>>;
 
-	public async insert_batch<T extends PgTableWithColumns<any>>(
+	public async insert_batch<T extends PgTable>(
 		table: T,
 		primary_field: keyof InferSelectModel<T>,
 		data: InferInsertModel<T>[]
 	): Promise<Response<InferSelectModel<T>[]>>;
 
-	public async insert_batch<T extends PgTableWithColumns<any>>(
+	public async insert_batch<T extends PgTable>(
 		table: T,
 		primary_field_or_data: keyof InferSelectModel<T> | InferInsertModel<T>[],
 		maybe_data?: InferInsertModel<T>[]
@@ -313,7 +300,7 @@ export class PgEventManager<D extends PgDatabase<any, any, any>> extends RawEven
 			maybe_data === undefined ? (primary_field_or_data as InferInsertModel<T>[]) : maybe_data;
 
 		const runInsertBatch = async (
-			database: PgDatabase<any, any, any>,
+			database: PgAsyncDatabase<any, any, any>,
 			rollbackOnError: boolean
 		): Promise<Response<InferSelectModel<T>[]>> => {
 			const issues = [];
@@ -395,20 +382,20 @@ export class PgEventManager<D extends PgDatabase<any, any, any>> extends RawEven
 		return await runInsertBatch(this._database, false);
 	}
 
-	public async update<T extends PgTableWithColumns<any>>(
+	public async update<T extends PgTable>(
 		table: T,
 		primary_value: InferSelectModel<T>[keyof InferSelectModel<T>] | Partial<InferSelectModel<T>>,
 		data: PgUpdateSetSource<T>
 	): Promise<Response<InferSelectModel<T>>>;
 
-	public async update<T extends PgTableWithColumns<any>>(
+	public async update<T extends PgTable>(
 		table: T,
 		primary_field: keyof InferSelectModel<T>,
 		primary_value: InferSelectModel<T>[keyof InferSelectModel<T>],
 		data: PgUpdateSetSource<T>
 	): Promise<Response<InferSelectModel<T>>>;
 
-	public async update<T extends PgTableWithColumns<any>>(
+	public async update<T extends PgTable>(
 		table: T,
 		primary_field_or_value:
 			| keyof InferSelectModel<T>
@@ -438,14 +425,14 @@ export class PgEventManager<D extends PgDatabase<any, any, any>> extends RawEven
 		}
 
 		const runUpdate = async (
-			database: PgDatabase<any, any, any>
+			database: PgAsyncDatabase<any, any, any>
 		): Promise<Response<InferSelectModel<T>>> => {
 			const issues = [];
 			const [old_row] = (await database
 				.select({
-					...getTableColumns(table)
+					...getColumns(table)
 				})
-				.from(table as PgTableWithColumns<any>)
+				.from(table as PgTable)
 				.where(where_result.where)) as InferSelectModel<T>[];
 
 			if (!old_row) {
@@ -527,7 +514,7 @@ export class PgEventManager<D extends PgDatabase<any, any, any>> extends RawEven
 		return await runUpdate(this._database);
 	}
 
-	public async update_batch<T extends PgTableWithColumns<any>>(
+	public async update_batch<T extends PgTable>(
 		table: T,
 		updates: Array<{
 			primary_value: InferSelectModel<T>[keyof InferSelectModel<T>] | Partial<InferSelectModel<T>>;
@@ -535,7 +522,7 @@ export class PgEventManager<D extends PgDatabase<any, any, any>> extends RawEven
 		}>
 	): Promise<Response<InferSelectModel<T>[]>>;
 
-	public async update_batch<T extends PgTableWithColumns<any>>(
+	public async update_batch<T extends PgTable>(
 		table: T,
 		primary_field: keyof InferSelectModel<T>,
 		updates: Array<{
@@ -544,7 +531,7 @@ export class PgEventManager<D extends PgDatabase<any, any, any>> extends RawEven
 		}>
 	): Promise<Response<InferSelectModel<T>[]>>;
 
-	public async update_batch<T extends PgTableWithColumns<any>>(
+	public async update_batch<T extends PgTable>(
 		table: T,
 		primary_field_or_updates:
 			| keyof InferSelectModel<T>
@@ -580,7 +567,7 @@ export class PgEventManager<D extends PgDatabase<any, any, any>> extends RawEven
 		}
 
 		const runUpdateBatch = async (
-			database: PgDatabase<any, any, any>,
+			database: PgAsyncDatabase<any, any, any>,
 			rollbackOnError: boolean
 		): Promise<Response<InferSelectModel<T>[]>> => {
 			const issues = [];
@@ -603,9 +590,9 @@ export class PgEventManager<D extends PgDatabase<any, any, any>> extends RawEven
 
 				const [old_row] = (await database
 					.select({
-						...getTableColumns(table)
+						...getColumns(table)
 					})
-					.from(table as PgTableWithColumns<any>)
+					.from(table as PgTable)
 					.where(where_result.where)) as InferSelectModel<T>[];
 
 				if (!old_row) {
@@ -713,7 +700,7 @@ export class PgEventManager<D extends PgDatabase<any, any, any>> extends RawEven
 		return await runUpdateBatch(this._database, false);
 	}
 
-	public async delete<T extends PgTableWithColumns<any>>(
+	public async delete<T extends PgTable>(
 		table: T,
 		primary_value: InferSelectModel<T>[keyof InferSelectModel<T>] | Partial<InferSelectModel<T>>
 	): Promise<Response<InferSelectModel<T>>>;
@@ -724,7 +711,7 @@ export class PgEventManager<D extends PgDatabase<any, any, any>> extends RawEven
 		primary_value: InferSelectModel<T>[keyof InferSelectModel<T>]
 	): Promise<Response<InferSelectModel<T>>>;
 
-	public async delete<T extends PgTableWithColumns<any>>(
+	public async delete<T extends PgTable>(
 		table: T,
 		primary_field_or_value:
 			| keyof InferSelectModel<T>
@@ -752,14 +739,14 @@ export class PgEventManager<D extends PgDatabase<any, any, any>> extends RawEven
 		}
 
 		const runDelete = async (
-			database: PgDatabase<any, any, any>
+			database: PgAsyncDatabase<any, any, any>
 		): Promise<Response<InferSelectModel<T>>> => {
 			const issues = [];
 			const [row] = (await database
 				.select({
-					...getTableColumns(table)
+					...getColumns(table)
 				})
-				.from(table as PgTableWithColumns<any>)
+				.from(table as PgTable)
 				.where(where_result.where)) as InferSelectModel<T>[];
 
 			if (!row) {
@@ -780,7 +767,7 @@ export class PgEventManager<D extends PgDatabase<any, any, any>> extends RawEven
 			try {
 				await database.delete(table).where(where_result.where);
 			} catch (error) {
-				return errorResponse('An error occurred while updating the data.', [...issues]);
+				return errorResponse('An error occurred while deleting the data.', [...issues]);
 			}
 
 			const post_response = await this.run(
@@ -816,20 +803,20 @@ export class PgEventManager<D extends PgDatabase<any, any, any>> extends RawEven
 		return await runDelete(this._database);
 	}
 
-	public async delete_batch<T extends PgTableWithColumns<any>>(
+	public async delete_batch<T extends PgTable>(
 		table: T,
 		primary_values: Array<
 			InferSelectModel<T>[keyof InferSelectModel<T>] | Partial<InferSelectModel<T>>
 		>
 	): Promise<Response<InferSelectModel<T>[]>>;
 
-	public async delete_batch<T extends PgTableWithColumns<any>>(
+	public async delete_batch<T extends PgTable>(
 		table: T,
 		primary_field: keyof InferSelectModel<T>,
 		primary_values: Array<InferSelectModel<T>[keyof InferSelectModel<T>]>
 	): Promise<Response<InferSelectModel<T>[]>>;
 
-	public async delete_batch<T extends PgTableWithColumns<any>>(
+	public async delete_batch<T extends PgTable>(
 		table: T,
 		primary_field_or_values:
 			| keyof InferSelectModel<T>
@@ -855,7 +842,7 @@ export class PgEventManager<D extends PgDatabase<any, any, any>> extends RawEven
 		}
 
 		const runDeleteBatch = async (
-			database: PgDatabase<any, any, any>,
+			database: PgAsyncDatabase<any, any, any>,
 			rollbackOnError: boolean
 		): Promise<Response<InferSelectModel<T>[]>> => {
 			const issues = [];
@@ -878,9 +865,9 @@ export class PgEventManager<D extends PgDatabase<any, any, any>> extends RawEven
 
 				const [row] = (await database
 					.select({
-						...getTableColumns(table)
+						...getColumns(table)
 					})
-					.from(table as PgTableWithColumns<any>)
+					.from(table as PgTable)
 					.where(where_result.where)) as InferSelectModel<T>[];
 
 				if (!row) {
@@ -911,7 +898,7 @@ export class PgEventManager<D extends PgDatabase<any, any, any>> extends RawEven
 				try {
 					await database.delete(table).where(where_result.where);
 				} catch (error) {
-					const message = 'An error occurred while updating the data.';
+					const message = 'An error occurred while deleting the data.';
 					if (rollbackOnError) {
 						throw new PgEventRollbackError(message, [...issues]);
 					}
@@ -956,11 +943,7 @@ export class PgEventManager<D extends PgDatabase<any, any, any>> extends RawEven
 		return await runDeleteBatch(this._database, false);
 	}
 
-	public put<
-		T extends PgTableWithColumns<any>,
-		E extends PgEventType,
-		C extends PgEventClass<T, E>
-	>(
+	public put<T extends PgTable, E extends PgEventType, C extends PgEventClass<T, E>>(
 		table: T,
 		type: E,
 		handler: (event: C) => Promise<void> | void,
@@ -969,15 +952,15 @@ export class PgEventManager<D extends PgDatabase<any, any, any>> extends RawEven
 		return this._register(this.getEventKey(table, type), handler, priority);
 	}
 
-	public async run<
-		T extends PgTableWithColumns<any>,
-		E extends PgEventType,
-		C extends PgEventClass<T, E>
-	>(table: T, type: E, event: C) {
+	public async run<T extends PgTable, E extends PgEventType, C extends PgEventClass<T, E>>(
+		table: T,
+		type: E,
+		event: C
+	) {
 		return await this._emit(this.getEventKey(table, type), event);
 	}
 
-	protected _resolvePrimaryKeys<T extends PgTableWithColumns<any>>(
+	protected _resolvePrimaryKeys<T extends PgTable>(
 		table: T,
 		primary_field?: keyof InferSelectModel<T>
 	): { keys: (keyof InferSelectModel<T>)[] } | { error: string } {
@@ -992,7 +975,7 @@ export class PgEventManager<D extends PgDatabase<any, any, any>> extends RawEven
 			return { error: 'No primary key is defined for this table.' };
 		}
 
-		const table_columns = getTableColumns(table);
+		const table_columns = getColumns(table);
 		const keys: (keyof InferSelectModel<T>)[] = [];
 
 		for (const primary_column of primary_columns) {
@@ -1016,11 +999,13 @@ export class PgEventManager<D extends PgDatabase<any, any, any>> extends RawEven
 		return { keys };
 	}
 
-	protected _buildWhereFromPrimaryValue<T extends PgTableWithColumns<any>>(
+	protected _buildWhereFromPrimaryValue<T extends PgTable>(
 		table: T,
 		keys: (keyof InferSelectModel<T>)[],
 		primary_value: unknown
 	): { where: ReturnType<typeof eq> } | { error: string } {
+		const table_columns = getColumns(table);
+
 		if (keys.length === 1) {
 			const key = keys[0];
 			const value =
@@ -1030,7 +1015,7 @@ export class PgEventManager<D extends PgDatabase<any, any, any>> extends RawEven
 					? (primary_value as Record<string, unknown>)[key]
 					: primary_value;
 
-			return { where: eq(table[key], value as any) };
+			return { where: eq(table_columns[key], value as any) };
 		}
 
 		if (primary_value === null || typeof primary_value !== 'object') {
@@ -1052,20 +1037,21 @@ export class PgEventManager<D extends PgDatabase<any, any, any>> extends RawEven
 		};
 	}
 
-	protected _buildWhereFromKeys<T extends PgTableWithColumns<any>>(
+	protected _buildWhereFromKeys<T extends PgTable>(
 		table: T,
 		keys: (keyof InferSelectModel<T>)[],
 		values: Partial<InferSelectModel<T>>
 	) {
-		const clauses = keys.map((key) => eq(table[key], values[key] as any));
+		const table_columns = getColumns(table);
+		const clauses = keys.map((key) => eq(table_columns[key], values[key] as any));
 		return clauses.length === 1 ? clauses[0] : and(...clauses);
 	}
 
-	protected _getIssueFields<T extends PgTableWithColumns<any>>(table: T) {
-		return Object.keys(getTableColumns(table)) as Extract<keyof InferSelectModel<T>, string>[];
+	protected _getIssueFields<T extends PgTable>(table: T) {
+		return Object.keys(getColumns(table)) as Extract<keyof InferSelectModel<T>, string>[];
 	}
 
-	private getEventKey(table: PgTableWithColumns<any>, type: PgEventType) {
+	private getEventKey(table: PgTable, type: PgEventType) {
 		return getTableUniqueName(table) + ':' + type;
 	}
 }

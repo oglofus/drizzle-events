@@ -2,7 +2,7 @@ import { EventPriority, RawEventManager } from '@oglofus/event-manager';
 import {
 	and,
 	eq,
-	getTableColumns,
+	getColumns,
 	getTableUniqueName,
 	InferInsertModel,
 	InferSelectModel
@@ -10,7 +10,7 @@ import {
 import {
 	BaseSQLiteDatabase,
 	getTableConfig,
-	SQLiteTableWithColumns,
+	SQLiteTable,
 	SQLiteUpdateSetSource
 } from 'drizzle-orm/sqlite-core';
 import {
@@ -24,9 +24,7 @@ import {
 	successResponse
 } from '../base/index.js';
 
-export class SQLitePreInsertEvent<T extends SQLiteTableWithColumns<any>> extends IssueEvent<
-	InferSelectModel<T>
-> {
+export class SQLitePreInsertEvent<T extends SQLiteTable> extends IssueEvent<InferSelectModel<T>> {
 	private readonly _data: InferInsertModel<T>;
 
 	constructor(
@@ -43,9 +41,7 @@ export class SQLitePreInsertEvent<T extends SQLiteTableWithColumns<any>> extends
 	}
 }
 
-export class SQLitePostInsertEvent<T extends SQLiteTableWithColumns<any>> extends IssueEvent<
-	InferSelectModel<T>
-> {
+export class SQLitePostInsertEvent<T extends SQLiteTable> extends IssueEvent<InferSelectModel<T>> {
 	private readonly _row: InferSelectModel<T>;
 
 	constructor(
@@ -62,9 +58,7 @@ export class SQLitePostInsertEvent<T extends SQLiteTableWithColumns<any>> extend
 	}
 }
 
-export class SQLitePreUpdateEvent<T extends SQLiteTableWithColumns<any>> extends IssueEvent<
-	InferSelectModel<T>
-> {
+export class SQLitePreUpdateEvent<T extends SQLiteTable> extends IssueEvent<InferSelectModel<T>> {
 	private readonly _data: SQLiteUpdateSetSource<T>;
 	private readonly _row: InferSelectModel<T>;
 
@@ -88,9 +82,7 @@ export class SQLitePreUpdateEvent<T extends SQLiteTableWithColumns<any>> extends
 	}
 }
 
-export class SQLitePostUpdateEvent<T extends SQLiteTableWithColumns<any>> extends IssueEvent<
-	InferSelectModel<T>
-> {
+export class SQLitePostUpdateEvent<T extends SQLiteTable> extends IssueEvent<InferSelectModel<T>> {
 	private readonly _row: InferSelectModel<T>;
 	private readonly _old_row: InferSelectModel<T>;
 
@@ -114,9 +106,7 @@ export class SQLitePostUpdateEvent<T extends SQLiteTableWithColumns<any>> extend
 	}
 }
 
-export class SQLitePreDeleteEvent<T extends SQLiteTableWithColumns<any>> extends IssueEvent<
-	InferSelectModel<T>
-> {
+export class SQLitePreDeleteEvent<T extends SQLiteTable> extends IssueEvent<InferSelectModel<T>> {
 	private readonly _row: InferSelectModel<T>;
 
 	constructor(
@@ -133,9 +123,7 @@ export class SQLitePreDeleteEvent<T extends SQLiteTableWithColumns<any>> extends
 	}
 }
 
-export class SQLitePostDeleteEvent<T extends SQLiteTableWithColumns<any>> extends IssueEvent<
-	InferSelectModel<T>
-> {
+export class SQLitePostDeleteEvent<T extends SQLiteTable> extends IssueEvent<InferSelectModel<T>> {
 	private readonly _row: InferSelectModel<T>;
 
 	constructor(
@@ -161,7 +149,7 @@ export type SQLiteEventType =
 	| 'post-delete';
 
 export type SQLiteEventClass<
-	T extends SQLiteTableWithColumns<any>,
+	T extends SQLiteTable,
 	E extends SQLiteEventType
 > = E extends 'pre-insert'
 	? SQLitePreInsertEvent<T>
@@ -196,18 +184,18 @@ export class SQLiteEventManager<
 		return this._config;
 	}
 
-	public async insert<T extends SQLiteTableWithColumns<any>>(
+	public async insert<T extends SQLiteTable>(
 		table: T,
 		data: InferInsertModel<T>
 	): Promise<Response<InferSelectModel<T>>>;
 
-	public async insert<T extends SQLiteTableWithColumns<any>>(
+	public async insert<T extends SQLiteTable>(
 		table: T,
 		primary_field: keyof InferSelectModel<T>,
 		data: InferInsertModel<T>
 	): Promise<Response<InferSelectModel<T>>>;
 
-	public async insert<T extends SQLiteTableWithColumns<any>>(
+	public async insert<T extends SQLiteTable>(
 		table: T,
 		primary_field_or_data: keyof InferSelectModel<T> | InferInsertModel<T>,
 		maybe_data?: InferInsertModel<T>
@@ -279,20 +267,20 @@ export class SQLiteEventManager<
 		return successResponse(row, [...issues]);
 	}
 
-	public async update<T extends SQLiteTableWithColumns<any>>(
+	public async update<T extends SQLiteTable>(
 		table: T,
 		primary_value: InferSelectModel<T>[keyof InferSelectModel<T>] | Partial<InferSelectModel<T>>,
 		data: SQLiteUpdateSetSource<T>
 	): Promise<Response<InferSelectModel<T>>>;
 
-	public async update<T extends SQLiteTableWithColumns<any>>(
+	public async update<T extends SQLiteTable>(
 		table: T,
 		primary_field: keyof InferSelectModel<T>,
 		primary_value: InferSelectModel<T>[keyof InferSelectModel<T>],
 		data: SQLiteUpdateSetSource<T>
 	): Promise<Response<InferSelectModel<T>>>;
 
-	public async update<T extends SQLiteTableWithColumns<any>>(
+	public async update<T extends SQLiteTable>(
 		table: T,
 		primary_field_or_value:
 			| keyof InferSelectModel<T>
@@ -326,7 +314,7 @@ export class SQLiteEventManager<
 
 		const old_row = await this._database
 			.select({
-				...getTableColumns(table)
+				...getColumns(table)
 			})
 			.from(table)
 			.where(where_result.where)
@@ -400,18 +388,18 @@ export class SQLiteEventManager<
 		return successResponse(row, [...issues]);
 	}
 
-	public async delete<T extends SQLiteTableWithColumns<any>>(
+	public async delete<T extends SQLiteTable>(
 		table: T,
 		primary_value: InferSelectModel<T>[keyof InferSelectModel<T>] | Partial<InferSelectModel<T>>
 	): Promise<Response<InferSelectModel<T>>>;
 
-	public async delete<T extends SQLiteTableWithColumns<any>>(
+	public async delete<T extends SQLiteTable>(
 		table: T,
 		primary_field: keyof InferSelectModel<T>,
 		primary_value: InferSelectModel<T>[keyof InferSelectModel<T>]
 	): Promise<Response<InferSelectModel<T>>>;
 
-	public async delete<T extends SQLiteTableWithColumns<any>>(
+	public async delete<T extends SQLiteTable>(
 		table: T,
 		primary_field_or_value:
 			| keyof InferSelectModel<T>
@@ -442,7 +430,7 @@ export class SQLiteEventManager<
 
 		const row = await this._database
 			.select({
-				...getTableColumns(table)
+				...getColumns(table)
 			})
 			.from(table)
 			.where(where_result.where)
@@ -466,7 +454,7 @@ export class SQLiteEventManager<
 		try {
 			await this._database.delete(table).where(where_result.where);
 		} catch (error) {
-			return errorResponse('An error occurred while updating the data.');
+			return errorResponse('An error occurred while deleting the data.');
 		}
 
 		const post_response = await this.run(
@@ -487,11 +475,7 @@ export class SQLiteEventManager<
 		return successResponse(row, [...issues]);
 	}
 
-	public put<
-		T extends SQLiteTableWithColumns<any>,
-		E extends SQLiteEventType,
-		C extends SQLiteEventClass<T, E>
-	>(
+	public put<T extends SQLiteTable, E extends SQLiteEventType, C extends SQLiteEventClass<T, E>>(
 		table: T,
 		type: E,
 		handler: (event: C) => Promise<void> | void,
@@ -501,14 +485,14 @@ export class SQLiteEventManager<
 	}
 
 	public async run<
-		T extends SQLiteTableWithColumns<any>,
+		T extends SQLiteTable,
 		E extends SQLiteEventType,
 		C extends SQLiteEventClass<T, E>
 	>(table: T, type: E, event: C) {
 		return await this._emit(this.getEventKey(table, type), event);
 	}
 
-	protected _resolvePrimaryKeys<T extends SQLiteTableWithColumns<any>>(
+	protected _resolvePrimaryKeys<T extends SQLiteTable>(
 		table: T,
 		primary_field?: keyof InferSelectModel<T>
 	): { keys: (keyof InferSelectModel<T>)[] } | { error: string } {
@@ -523,7 +507,7 @@ export class SQLiteEventManager<
 			return { error: 'No primary key is defined for this table.' };
 		}
 
-		const table_columns = getTableColumns(table);
+		const table_columns = getColumns(table);
 		const keys: (keyof InferSelectModel<T>)[] = [];
 
 		for (const primary_column of primary_columns) {
@@ -547,11 +531,13 @@ export class SQLiteEventManager<
 		return { keys };
 	}
 
-	protected _buildWhereFromPrimaryValue<T extends SQLiteTableWithColumns<any>>(
+	protected _buildWhereFromPrimaryValue<T extends SQLiteTable>(
 		table: T,
 		keys: (keyof InferSelectModel<T>)[],
 		primary_value: unknown
 	): { where: ReturnType<typeof eq> } | { error: string } {
+		const table_columns = getColumns(table);
+
 		if (keys.length === 1) {
 			const key = keys[0];
 			const value =
@@ -561,7 +547,7 @@ export class SQLiteEventManager<
 					? (primary_value as Record<string, unknown>)[key]
 					: primary_value;
 
-			return { where: eq(table[key], value as any) };
+			return { where: eq(table_columns[key], value as any) };
 		}
 
 		if (primary_value === null || typeof primary_value !== 'object') {
@@ -583,20 +569,21 @@ export class SQLiteEventManager<
 		};
 	}
 
-	protected _buildWhereFromKeys<T extends SQLiteTableWithColumns<any>>(
+	protected _buildWhereFromKeys<T extends SQLiteTable>(
 		table: T,
 		keys: (keyof InferSelectModel<T>)[],
 		values: Partial<InferSelectModel<T>>
 	) {
-		const clauses = keys.map((key) => eq(table[key], values[key] as any));
+		const table_columns = getColumns(table);
+		const clauses = keys.map((key) => eq(table_columns[key], values[key] as any));
 		return clauses.length === 1 ? clauses[0] : and(...clauses);
 	}
 
-	protected _getIssueFields<T extends SQLiteTableWithColumns<any>>(table: T) {
-		return Object.keys(getTableColumns(table)) as Extract<keyof InferSelectModel<T>, string>[];
+	protected _getIssueFields<T extends SQLiteTable>(table: T) {
+		return Object.keys(getColumns(table)) as Extract<keyof InferSelectModel<T>, string>[];
 	}
 
-	private getEventKey(table: SQLiteTableWithColumns<any>, type: SQLiteEventType) {
+	private getEventKey(table: SQLiteTable, type: SQLiteEventType) {
 		return getTableUniqueName(table) + ':' + type;
 	}
 }

@@ -1,6 +1,6 @@
 import { InferInsertModel, InferSelectModel } from 'drizzle-orm';
 import { DrizzleD1Database } from 'drizzle-orm/d1';
-import { SQLiteTableWithColumns } from 'drizzle-orm/sqlite-core';
+import { SQLiteTable } from 'drizzle-orm/sqlite-core';
 import {
 	errorResponse,
 	PartialEventManagerConfig,
@@ -18,18 +18,18 @@ export class D1EventManager<D extends DrizzleD1Database<any>> extends SQLiteEven
 		super(database, config);
 	}
 
-	public async insertBatch<T extends SQLiteTableWithColumns<any>>(
+	public async insertBatch<T extends SQLiteTable>(
 		table: T,
 		data: InferInsertModel<T>[]
 	): Promise<Response<InferSelectModel<T>[]>>;
 
-	public async insertBatch<T extends SQLiteTableWithColumns<any>>(
+	public async insertBatch<T extends SQLiteTable>(
 		table: T,
 		primary_field: keyof InferSelectModel<T>,
 		data: InferInsertModel<T>[]
 	): Promise<Response<InferSelectModel<T>[]>>;
 
-	public async insertBatch<T extends SQLiteTableWithColumns<any>>(
+	public async insertBatch<T extends SQLiteTable>(
 		table: T,
 		primary_field_or_data: keyof InferSelectModel<T> | InferInsertModel<T>[],
 		maybe_data?: InferInsertModel<T>[]
