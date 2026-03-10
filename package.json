@@ -40,6 +40,7 @@
 	"scripts": {
 		"build": "tsc",
 		"test": "npm run build && node --test",
+		"format": "prettier --write .",
 		"prepublishOnly": "npm run build"
 	},
 	"publishConfig": {
@@ -75,6 +76,7 @@
 	"private": false,
 	"devDependencies": {
 		"prettier": "^3.8.1",
+		"prettier-plugin-organize-imports": "^4.3.0",
 		"typescript": "^5.9.3"
 	},
 	"dependencies": {
