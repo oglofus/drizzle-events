@@ -22,48 +22,49 @@ This library is ESM-only.
 ## Quick start (SQLite)
 
 ```ts
-import { sqliteTable, integer, text } from 'drizzle-orm/sqlite-core';
-import { Database } from 'drizzle-orm/sqlite-core'; // your BaseSQLiteDatabase type/instance
-import { SQLiteEventManager } from '@oglofus/drizzle-events/sqlite';
+// your BaseSQLiteDatabase type/instance
+import { SQLiteEventManager } from "@oglofus/drizzle-events/sqlite";
+import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { Database } from "drizzle-orm/sqlite-core";
 
 // Define a Drizzle table
-export const users = sqliteTable('users', {
-	id: integer('id').primaryKey({ autoIncrement: true }),
-	email: text('email').notNull().unique(),
-	profile: text('profile') // JSON string in this simple example
+export const users = sqliteTable("users", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  email: text("email").notNull().unique(),
+  profile: text("profile"), // JSON string in this simple example
 });
 
 // Create your Drizzle database instance "db" with sqlite driver of your choice
 // const db: BaseSQLiteDatabase = ...
 
 const events = new SQLiteEventManager(db, {
-	merge_objects: true, // Deep-merge objects on update
-	array_strategy: 'union', // Array merge strategy: 'replace' | 'concat' | 'union'
-	rollback_on_cancel: true // Rollback when a post-event is cancelled
+  merge_objects: true, // Deep-merge objects on update
+  array_strategy: "union", // Array merge strategy: 'replace' | 'concat' | 'union'
+  rollback_on_cancel: true, // Rollback when a post-event is cancelled
 });
 
 // Add a pre-insert validation and transformation
-events.put(users, 'pre-insert', (ev) => {
-	const data = ev.data;
+events.put(users, "pre-insert", (ev) => {
+  const data = ev.data;
 
-	if (!('email' in data) || typeof data.email !== 'string') {
-		ev.cancel('email is required');
-		return;
-	}
+  if (!("email" in data) || typeof data.email !== "string") {
+    ev.cancel("email is required");
+    return;
+  }
 
-	// Example transformation
-	ev.data = {
-		...data,
-		email: data.email.toLowerCase()
-	};
+  // Example transformation
+  ev.data = {
+    ...data,
+    email: data.email.toLowerCase(),
+  };
 });
 
 // Insert with events
-const result = await events.insert(users, 'id', { email: 'John@Example.com' });
-if (result.type === 'error') {
-	console.error('Insert failed:', result.message);
+const result = await events.insert(users, "id", { email: "John@Example.com" });
+if (result.type === "error") {
+  console.error("Insert failed:", result.message);
 } else {
-	console.log('Inserted row:', result.data);
+  console.log("Inserted row:", result.data);
 }
 ```
 
@@ -143,14 +144,14 @@ All public operations return a discriminated union:
 
 ```ts
 type Response<T> =
-	| {
-			type: 'success';
-			data: T;
-	  }
-	| {
-			type: 'error';
-			message?: string;
-	  };
+  | {
+      type: "success";
+      data: T;
+    }
+  | {
+      type: "error";
+      message?: string;
+    };
 ```
 
 Check `result.type` to branch success vs error.
@@ -164,8 +165,8 @@ Check `result.type` to branch success vs error.
 Examples:
 
 ```ts
-import { SQLiteEventManager } from '@oglofus/drizzle-events/sqlite';
-import { deepMerge } from '@oglofus/drizzle-events/base';
+import { deepMerge } from "@oglofus/drizzle-events/base";
+import { SQLiteEventManager } from "@oglofus/drizzle-events/sqlite";
 ```
 
 ## Notes

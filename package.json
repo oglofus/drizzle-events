@@ -1,86 +1,105 @@
 {
-	"name": "@oglofus/drizzle-events",
-	"version": "0.0.12",
-	"description": "A lightweight, strongly-typed event management library for Drizzle ORM.",
-	"type": "module",
-	"main": "dist/index.js",
-	"types": "dist/index.d.ts",
-	"exports": {
-		".": {
-			"types": "./dist/index.d.ts",
-			"import": "./dist/index.js",
-			"default": "./dist/index.js"
-		},
-		"./sqlite": {
-			"types": "./dist/sqlite/index.d.ts",
-			"import": "./dist/sqlite/index.js",
-			"default": "./dist/sqlite/index.js"
-		},
-		"./d1": {
-			"types": "./dist/d1/index.d.ts",
-			"import": "./dist/d1/index.js",
-			"default": "./dist/d1/index.js"
-		},
-		"./pg": {
-			"types": "./dist/pg/index.d.ts",
-			"import": "./dist/pg/index.js",
-			"default": "./dist/pg/index.js"
-		},
-		"./base": {
-			"types": "./dist/base/index.d.ts",
-			"import": "./dist/base/index.js",
-			"default": "./dist/base/index.js"
-		}
-	},
-	"files": [
-		"dist",
-		"README.md",
-		"LICENSE"
-	],
-	"scripts": {
-		"build": "tsc",
-		"test": "npm run build && node --test",
-		"format": "prettier --write .",
-		"prepublishOnly": "npm run build"
-	},
-	"publishConfig": {
-		"access": "public"
-	},
-	"repository": {
-		"type": "git",
-		"url": "git+https://github.com/oglofus/drizzle-events.git"
-	},
-	"bugs": {
-		"url": "https://github.com/oglofus/drizzle-events/issues"
-	},
-	"homepage": "https://github.com/oglofus/drizzle-events#readme",
-	"keywords": [
-		"drizzle",
-		"drizzle-orm",
-		"plugin",
-		"event-manager",
-		"events",
-		"event-emitter",
-		"event-handling",
-		"typescript",
-		"javascript",
-		"type-safe",
-		"strongly-typed",
-		"lightweight",
-		"event-driven",
-		"pub-sub",
-		"observer-pattern"
-	],
-	"author": "oglofus <> (https://oglofus.com/)",
-	"license": "ISC",
-	"private": false,
-	"devDependencies": {
-		"prettier": "^3.8.1",
-		"prettier-plugin-organize-imports": "^4.3.0",
-		"typescript": "^5.9.3"
-	},
-	"dependencies": {
-		"@oglofus/event-manager": "^0.0.4",
-		"drizzle-orm": "^1.0.0-beta.16-ea816b6"
-	}
+  "name": "@oglofus/drizzle-events",
+  "version": "0.0.13",
+  "description": "A lightweight, strongly-typed event management library for Drizzle ORM.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./sqlite": {
+      "types": "./dist/sqlite/index.d.ts",
+      "import": "./dist/sqlite/index.js",
+      "default": "./dist/sqlite/index.js"
+    },
+    "./d1": {
+      "types": "./dist/d1/index.d.ts",
+      "import": "./dist/d1/index.js",
+      "default": "./dist/d1/index.js"
+    },
+    "./pg": {
+      "types": "./dist/pg/index.d.ts",
+      "import": "./dist/pg/index.js",
+      "default": "./dist/pg/index.js"
+    },
+    "./base": {
+      "types": "./dist/base/index.d.ts",
+      "import": "./dist/base/index.js",
+      "default": "./dist/base/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "lint": "eslint .",
+    "test": "npm run build && node --test",
+    "format": "prettier --write .",
+    "lint:fix": "eslint . --fix",
+    "prepare": "husky",
+    "prepublishOnly": "npm run build"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/oglofus/drizzle-events.git"
+  },
+  "bugs": {
+    "url": "https://github.com/oglofus/drizzle-events/issues"
+  },
+  "homepage": "https://github.com/oglofus/drizzle-events#readme",
+  "keywords": [
+    "drizzle",
+    "drizzle-orm",
+    "plugin",
+    "event-manager",
+    "events",
+    "event-emitter",
+    "event-handling",
+    "typescript",
+    "javascript",
+    "type-safe",
+    "strongly-typed",
+    "lightweight",
+    "event-driven",
+    "pub-sub",
+    "observer-pattern"
+  ],
+  "author": "oglofus <> (https://oglofus.com/)",
+  "license": "ISC",
+  "private": false,
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@trivago/prettier-plugin-sort-imports": "^6.0.2",
+    "eslint": "^10.9.1",
+    "eslint-plugin-drizzle": "^0.2.3",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.4.1",
+    "prettier": "^3.9.6",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.68.0"
+  },
+  "dependencies": {
+    "@oglofus/event-manager": "^0.0.4",
+    "drizzle-orm": "^1.0.0-rc.4"
+  },
+  "packageManager": "pnpm@11.24.0+sha512.bd27e345e976dcb0be0b7a1228217b049a817e21b1f355c90dbe7dc46671895a8bc1e6d06c24554505ea93ea0b45f489a27ec1bfbc8de6a9659fca0f16fa0000",
+  "lint-staged": {
+    "*.{js,ts,mjs,cjs}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{json,yaml,yml,md}": [
+      "prettier --write"
+    ]
+  }
 }

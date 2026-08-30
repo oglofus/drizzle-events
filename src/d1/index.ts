@@ -1,105 +1,118 @@
-import { InferInsertModel, InferSelectModel } from 'drizzle-orm';
-import { DrizzleD1Database } from 'drizzle-orm/d1';
-import { SQLiteTable } from 'drizzle-orm/sqlite-core';
+import { InferInsertModel, InferSelectModel } from "drizzle-orm";
+import { DrizzleD1Database } from "drizzle-orm/d1";
+import { SQLiteTable } from "drizzle-orm/sqlite-core";
+
 import {
-	errorResponse,
-	PartialEventManagerConfig,
-	Response,
-	successResponse
-} from '../base/index.js';
+  PartialEventManagerConfig,
+  Response,
+  errorResponse,
+  successResponse,
+} from "../base/index.js";
 import {
-	SQLiteEventManager,
-	SQLitePostInsertEvent,
-	SQLitePreInsertEvent
-} from '../sqlite/index.js';
+  SQLiteEventManager,
+  SQLitePostInsertEvent,
+  SQLitePreInsertEvent,
+} from "../sqlite/index.js";
 
-export class D1EventManager<D extends DrizzleD1Database<any>> extends SQLiteEventManager<D> {
-	constructor(database: D, config?: PartialEventManagerConfig) {
-		super(database, config);
-	}
+export class D1EventManager<
+  D extends DrizzleD1Database<any>,
+> extends SQLiteEventManager<D> {
+  constructor(database: D, config?: PartialEventManagerConfig) {
+    super(database, config);
+  }
 
-	public async insertBatch<T extends SQLiteTable>(
-		table: T,
-		data: InferInsertModel<T>[]
-	): Promise<Response<InferSelectModel<T>[]>>;
+  public async insertBatch<T extends SQLiteTable>(
+    table: T,
+    data: InferInsertModel<T>[],
+  ): Promise<Response<InferSelectModel<T>[]>>;
 
-	public async insertBatch<T extends SQLiteTable>(
-		table: T,
-		primary_field: keyof InferSelectModel<T>,
-		data: InferInsertModel<T>[]
-	): Promise<Response<InferSelectModel<T>[]>>;
+  public async insertBatch<T extends SQLiteTable>(
+    table: T,
+    primary_field: keyof InferSelectModel<T>,
+    data: InferInsertModel<T>[],
+  ): Promise<Response<InferSelectModel<T>[]>>;
 
-	public async insertBatch<T extends SQLiteTable>(
-		table: T,
-		primary_field_or_data: keyof InferSelectModel<T> | InferInsertModel<T>[],
-		maybe_data?: InferInsertModel<T>[]
-	): Promise<Response<InferSelectModel<T>[]>> {
-		const issue_fields = this._getIssueFields(table);
-		const issues = [];
-		const primary_field =
-			maybe_data === undefined ? undefined : (primary_field_or_data as keyof InferSelectModel<T>);
-		let data =
-			maybe_data === undefined ? (primary_field_or_data as InferInsertModel<T>[]) : maybe_data;
+  public async insertBatch<T extends SQLiteTable>(
+    table: T,
+    primary_field_or_data: keyof InferSelectModel<T> | InferInsertModel<T>[],
+    maybe_data?: InferInsertModel<T>[],
+  ): Promise<Response<InferSelectModel<T>[]>> {
+    const issue_fields = this._getIssueFields(table);
+    const issues = [];
+    const primary_field =
+      maybe_data === undefined
+        ? undefined
+        : (primary_field_or_data as keyof InferSelectModel<T>);
+    const data =
+      maybe_data === undefined
+        ? (primary_field_or_data as InferInsertModel<T>[])
+        : maybe_data;
 
-		const primary_info = this._resolvePrimaryKeys(table, primary_field);
+    const primary_info = this._resolvePrimaryKeys(table, primary_field);
 
-		if ('error' in primary_info && this._config.rollback_on_cancel) {
-			return errorResponse(
-				`${primary_info.error} Pass a primary_field or disable rollback_on_cancel.`
-			);
-		}
+    if ("error" in primary_info && this._config.rollback_on_cancel) {
+      return errorResponse(
+        `${primary_info.error} Pass a primary_field or disable rollback_on_cancel.`,
+      );
+    }
 
-		for (let i = 0; i < data.length; i++) {
-			const pre_response = await this.run(
-				table,
-				'pre-insert',
-				new SQLitePreInsertEvent<T>(issue_fields, data[i])
-			);
-			issues.push(...pre_response.event.issues);
+    for (let i = 0; i < data.length; i++) {
+      const pre_response = await this.run(
+        table,
+        "pre-insert",
+        new SQLitePreInsertEvent<T>(issue_fields, data[i]),
+      );
+      issues.push(...pre_response.event.issues);
 
-			if (pre_response.event.isCancelled()) {
-				return errorResponse(pre_response.event.getCancelReason(), [...issues]);
-			}
+      if (pre_response.event.isCancelled()) {
+        return errorResponse(pre_response.event.getCancelReason(), [...issues]);
+      }
 
-			data[i] = pre_response.event.data;
-		}
+      data[i] = pre_response.event.data;
+    }
 
-		let results: InferSelectModel<T>[];
+    let results: InferSelectModel<T>[];
 
-		try {
-			results = (await this._database.batch(
-				data.map((r) => this._database.insert(table).values(r).returning()) as any
-			)) as any as InferSelectModel<T>[];
-		} catch (error) {
-			return errorResponse('An error occurred while inserting the data.');
-		}
+    try {
+      results = (await this._database.batch(
+        data.map((r) =>
+          this._database.insert(table).values(r).returning(),
+        ) as any,
+      )) as any as InferSelectModel<T>[];
+    } catch (error) {
+      return errorResponse("An error occurred while inserting the data.");
+    }
 
-		if (results.length === 0) {
-			return errorResponse('An error occurred while inserting the data.');
-		}
+    if (results.length === 0) {
+      return errorResponse("An error occurred while inserting the data.");
+    }
 
-		for (let i = 0; i < results.length; i++) {
-			const post_response = await this.run(
-				table,
-				'post-insert',
-				new SQLitePostInsertEvent<T>(issue_fields, results[i])
-			);
-			issues.push(...post_response.event.issues);
+    for (let i = 0; i < results.length; i++) {
+      const post_response = await this.run(
+        table,
+        "post-insert",
+        new SQLitePostInsertEvent<T>(issue_fields, results[i]),
+      );
+      issues.push(...post_response.event.issues);
 
-			if (post_response.event.isCancelled()) {
-				if (this._config.rollback_on_cancel && 'keys' in primary_info) {
-					for (let j = 0; j < results.length; j++) {
-						await this._database
-							.delete(table)
-							.where(this._buildWhereFromKeys(table, primary_info.keys, results[j]))
-							.execute();
-					}
-				}
+      if (post_response.event.isCancelled()) {
+        if (this._config.rollback_on_cancel && "keys" in primary_info) {
+          for (let j = 0; j < results.length; j++) {
+            await this._database
+              .delete(table)
+              .where(
+                this._buildWhereFromKeys(table, primary_info.keys, results[j]),
+              )
+              .execute();
+          }
+        }
 
-				return errorResponse(post_response.event.getCancelReason(), [...issues]);
-			}
-		}
+        return errorResponse(post_response.event.getCancelReason(), [
+          ...issues,
+        ]);
+      }
+    }
 
-		return successResponse(results, [...issues]);
-	}
+    return successResponse(results, [...issues]);
+  }
 }
