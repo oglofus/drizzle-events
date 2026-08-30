@@ -1,0 +1,56 @@
+name: Bug report
+description: Report a reproducible problem with drizzle-events
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug. Please search existing issues first.
+  - type: input
+    id: version
+    attributes:
+      label: Package version
+      description: Which version of @oglofus/drizzle-events are you using?
+      placeholder: 0.0.13
+    validations:
+      required: true
+  - type: dropdown
+    id: manager
+    attributes:
+      label: Database manager
+      options:
+        - SQLiteEventManager
+        - D1EventManager
+        - PgEventManager
+        - Other / not applicable
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: Describe the problem and what you expected to happen.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: Provide a minimal reproduction or link to a repository.
+      render: typescript
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Include Node.js, package manager, Drizzle ORM, and database/driver versions.
+      placeholder: |
+        Node.js: 24.x
+        Package manager: pnpm 11.x
+        Drizzle ORM: 1.0.0-rc.4
+        Database/driver:
+    validations:
+      required: true
